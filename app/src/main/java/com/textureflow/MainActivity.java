@@ -620,6 +620,13 @@ public final class MainActivity extends Activity {
     private void selectResponseAction(String action) {
         responseStatus.setVisibility(View.VISIBLE);
         if (currentAttention == null || phoneActionBusy) return;
+        String capability = "Send".equals(action) ? "REPLY"
+                : "Later".equals(action) ? "SNOOZE" : "DISMISS";
+        if (!currentAttention.hasCapability(capability)) {
+            responseStatus.setText(action + " is not available for this notification");
+            voiceController.speak(action + " is not available for this notification.");
+            return;
+        }
         if ("Send".equals(action) && responseEditor.getText().toString().trim().isEmpty()) {
             responseEditor.requestFocus();
             InputMethodManager keyboard = getSystemService(InputMethodManager.class);
@@ -699,6 +706,8 @@ public final class MainActivity extends Activity {
         }
         eyeView.setState(EyeOfHorusView.State.AWAITING_CONFIRMATION);
         textureEngine.emit(TextureCue.PROPOSAL_READY, proposal.proposalId(), responsePanel);
+        voiceController.speakAndListen(proposal.spokenPreview()
+                + " Say confirm to authorize it, change it, or cancel.");
     }
 
     private void setResponseActionsEnabled(boolean enabled) {
@@ -937,6 +946,21 @@ public final class MainActivity extends Activity {
                 voiceController.speakAndListen("I changed the proposed reply. Say send to confirm it, or keep editing.");
                 return;
             }
+        }
+        if (activePhoneProposal == null && currentAttention != null
+                && (normalized.equals("send") || normalized.equals("send it"))) {
+            selectResponseAction("Send");
+            return;
+        }
+        if (activePhoneProposal == null && currentAttention != null
+                && (normalized.equals("later") || normalized.startsWith("remind me later"))) {
+            selectResponseAction("Later");
+            return;
+        }
+        if (activePhoneProposal == null && currentAttention != null
+                && (normalized.equals("done") || normalized.equals("dismiss"))) {
+            selectResponseAction("Done");
+            return;
         }
         if (looksLikeHistoryQuestion(normalized)) {
             voiceController.speakAndListen(answerFromLocalHistory(spoken));
@@ -1397,6 +1421,8 @@ public final class MainActivity extends Activity {
         activePhoneProposal = null;
         activeProposalEvent = null;
         renderReceipt(receipt.receiptId(), state, receipt.message());
+        voiceController.speak(state == ReceiptState.DISPATCHED
+                ? "Done. Android dispatched the action." : "That action was not dispatched.");
     }
 
     private void cancelPhoneProposal() {
