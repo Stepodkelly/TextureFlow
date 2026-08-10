@@ -1,0 +1,53 @@
+[
+  {
+    "contractVersion": 1,
+    "eventId": "evt_demo_sam",
+    "deviceId": "android_demo",
+    "app": {
+      "packageName": "com.whatsapp",
+      "label": "WhatsApp"
+    },
+    "sender": {
+      "displayName": "Sam",
+      "personId": "person_sam"
+    },
+    "conversationLabel": "Sam",
+    "body": "I'm downstairs. The door is locked.",
+    "postedAt": "2026-08-09T18:10:00-07:00",
+    "updatedAt": "2026-08-09T18:10:00-07:00",
+    "version": 1,
+    "status": "ACTIVE",
+    "capabilities": ["REPLY", "DISMISS", "SNOOZE"],
+    "priority": {
+      "score": 0.94,
+      "level": "URGENT",
+      "reason": "A close contact is waiting outside and cannot enter."
+    }
+  },
+  {
+    "contractVersion": 1,
+    "eventId": "evt_demo_maya",
+    "deviceId": "android_demo",
+    "app": {
+      "packageName": "org.telegram.messenger",
+      "label": "Telegram"
+    },
+    "sender": {
+      "displayName": "Maya",
+      "personId": "person_maya"
+    },
+    "conversationLabel": "Maya",
+    "body": "Are we still meeting at nine?",
+    "postedAt": "2026-08-09T18:11:00-07:00",
+    "updatedAt": "2026-08-09T18:11:00-07:00",
+    "version": 1,
+    "status": "ACTIVE",
+    "capabilities": ["REPLY", "DISMISS"],
+    "priority": {
+      "score": 0.72,
+      "level": "IMPORTANT",
+      "reason": "A direct question from an important person needs a response."
+    }
+  }
+]
+

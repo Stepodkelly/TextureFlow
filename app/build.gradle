@@ -1,0 +1,70 @@
+import groovy.json.JsonOutput
+
+plugins {
+    id "com.android.application"
+}
+
+def textureFlowEnv = [:]
+def textureFlowEnvFile = rootProject.file(".env.local")
+if (textureFlowEnvFile.exists()) {
+    textureFlowEnvFile.eachLine { line ->
+        def value = line.trim()
+        if (value && !value.startsWith("#") && value.contains("=")) {
+            def pair = value.split("=", 2)
+            textureFlowEnv[pair[0]] = pair[1]
+        }
+    }
+}
+def textureFlowValue = { name ->
+    System.getenv(name) ?: textureFlowEnv[name] ?: ""
+}
+
+android {
+    namespace "com.textureflow"
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.textureflow"
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName "0.1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    buildTypes {
+        debug {
+            // Controlled hackathon build only. Production uses per-device enrollment.
+            buildConfigField "String", "CONVEX_URL", JsonOutput.toJson(textureFlowValue("CONVEX_URL"))
+            buildConfigField "String", "TEXTUREFLOW_OWNER_ID", JsonOutput.toJson(textureFlowValue("TEXTUREFLOW_OWNER_ID"))
+            buildConfigField "String", "TEXTUREFLOW_DEVICE_TOKEN", JsonOutput.toJson("")
+            buildConfigField "String", "TEXTUREFLOW_OIDC_TOKEN", JsonOutput.toJson("")
+            buildConfigField "String", "TEXTUREFLOW_DEVICE_NAME", JsonOutput.toJson("TextureFlow Android")
+        }
+        release {
+            buildConfigField "String", "CONVEX_URL", JsonOutput.toJson("")
+            buildConfigField "String", "TEXTUREFLOW_OWNER_ID", JsonOutput.toJson("")
+            buildConfigField "String", "TEXTUREFLOW_DEVICE_TOKEN", JsonOutput.toJson("")
+            buildConfigField "String", "TEXTUREFLOW_OIDC_TOKEN", JsonOutput.toJson("")
+            buildConfigField "String", "TEXTUREFLOW_DEVICE_NAME", JsonOutput.toJson("TextureFlow Android")
+        }
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    testImplementation "junit:junit:4.13.2"
+}

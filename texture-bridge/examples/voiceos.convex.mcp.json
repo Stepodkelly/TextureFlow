@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "textureflow": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/TextureFlow/texture-bridge/dist/index.js"
+      ],
+      "env": {
+        "TEXTUREFLOW_ADAPTER": "convex",
+        "TEXTUREFLOW_OWNER_ID": "replace-with-owner-id",
+        "CONVEX_URL": "https://replace-with-deployment.convex.cloud",
+        "CONVEX_AUTH_TOKEN": "replace-with-runtime-auth-token",
+        "TEXTUREFLOW_RECEIPT_TIMEOUT_MS": "15000"
+      }
+    }
+  }
+}

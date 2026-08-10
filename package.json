@@ -1,0 +1,29 @@
+{
+  "name": "textureflow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "texture-bridge",
+    "intelligence"
+  ],
+  "scripts": {
+    "check:contracts": "node tools/validate-contracts/index.mjs",
+    "test:rehearsal": "node --test tools/test/rehearsal.test.mjs",
+    "check:bridge": "npm run check --workspace @textureflow/voiceos-bridge",
+    "check:intelligence": "npm run test --workspace @textureflow/intelligence",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy",
+    "check": "npm run check:contracts && npm run test:rehearsal && npm run check:bridge && npm run check:intelligence"
+  },
+  "dependencies": {
+    "convex": "^1.43.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+

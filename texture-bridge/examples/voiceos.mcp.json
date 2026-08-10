@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "textureflow": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/TextureFlow/texture-bridge/dist/index.js"
+      ],
+      "env": {
+        "TEXTUREFLOW_ADAPTER": "fixture",
+        "TEXTUREFLOW_OWNER_ID": "demo-owner",
+        "TEXTUREFLOW_SESSION_TTL_MS": "120000"
+      }
+    }
+  }
+}

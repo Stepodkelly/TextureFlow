@@ -1,0 +1,24 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+local.properties
+
+# Android and Gradle
+.gradle/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# JavaScript and Convex
+node_modules/
+.convex/
+dist/
+coverage/
+
+# IDE and OS
+.idea/
+*.iml
+.DS_Store
+

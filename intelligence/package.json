@@ -1,0 +1,24 @@
+{
+  "name": "@textureflow/intelligence",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/intelligence/src/index.js",
+  "types": "dist/intelligence/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/intelligence/src/index.d.ts",
+      "import": "./dist/intelligence/src/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/intelligence/tests/*.test.js",
+    "eval": "npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.2"
+  }
+}
