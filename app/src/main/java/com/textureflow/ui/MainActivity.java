@@ -507,12 +507,14 @@ public final class MainActivity extends Activity {
         LinearLayout shell = new LinearLayout(this);
         shell.setOrientation(LinearLayout.HORIZONTAL);
         shell.setGravity(Gravity.CENTER);
-        shell.setPadding(dp(12), dp(8), dp(12), dp(8));
+        shell.setPadding(dp(10), dp(6), dp(10), dp(6));
         shell.setBackground(MothMarketTheme.roundRect(MothMarketTheme.NAV, 30f, this));
         shell.setElevation(dp(8));
+        shell.setClipChildren(false);
+        shell.setClipToPadding(false);
 
-        chatsTab = navTab("Chats", R.drawable.ic_chats, Page.CHATS, true);
-        flowsTab = navTab("Flows", R.drawable.moth_logo, Page.FLOWS, false);
+        chatsTab = navTab("chat", R.drawable.ic_chats, Page.CHATS, true);
+        flowsTab = navTab("flow", R.drawable.moth_logo, Page.FLOWS, false);
         shell.addView(chatsTab, navItemParams());
         shell.addView(flowsTab, navItemParams());
         return shell;
@@ -521,23 +523,29 @@ public final class MainActivity extends Activity {
     private LinearLayout navTab(String label, int icon, Page page, boolean selected) {
         LinearLayout tab = new LinearLayout(this);
         tab.setOrientation(LinearLayout.VERTICAL);
-        tab.setGravity(Gravity.CENTER);
-        tab.setPadding(dp(22), dp(10), dp(22), dp(8));
+        tab.setGravity(Gravity.CENTER_HORIZONTAL);
+        tab.setPadding(dp(18), dp(8), dp(18), dp(8));
         tab.setBackground(MothMarketTheme.navPill(this, selected));
         tab.setClickable(true);
         tab.setFocusable(true);
         tab.setSelected(selected);
         tab.setOnClickListener(view -> showPage(page));
+        tab.setClipChildren(false);
+        tab.setClipToPadding(false);
 
         ImageView iconView = new ImageView(this);
         iconView.setImageResource(icon);
         iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         iconView.setContentDescription(label);
-        tab.addView(iconView, new LinearLayout.LayoutParams(dp(30), dp(30)));
+        tab.addView(iconView, new LinearLayout.LayoutParams(dp(26), dp(26)));
 
-        TextView caption = text(label, 12, selected ? INK : MUTED, selected);
+        TextView caption = text(label, 11, selected ? INK : MUTED, selected);
         caption.setGravity(Gravity.CENTER);
-        tab.addView(caption, topMargin(dp(4)));
+        caption.setIncludeFontPadding(false);
+        LinearLayout.LayoutParams captionParams = new LinearLayout.LayoutParams(-2, -2);
+        captionParams.topMargin = dp(3);
+        captionParams.gravity = Gravity.CENTER_HORIZONTAL;
+        tab.addView(caption, captionParams);
         textureEngine.attachGlassControl(tab);
         return tab;
     }
@@ -1982,13 +1990,14 @@ public final class MainActivity extends Activity {
     }
 
     private FrameLayout.LayoutParams navigationParams() {
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-1, dp(72), Gravity.BOTTOM);
+        // WRAP_CONTENT so icon + "chat"/"flow" captions are not clipped.
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         params.setMargins(dp(18), 0, dp(18), dp(18));
         return params;
     }
 
     private LinearLayout.LayoutParams navItemParams() {
-        return new LinearLayout.LayoutParams(0, -1, 1f);
+        return new LinearLayout.LayoutParams(0, -2, 1f);
     }
 
     private FrameLayout.LayoutParams matchFrame() { return new FrameLayout.LayoutParams(-1, -1); }
