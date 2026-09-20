@@ -1,30 +1,38 @@
 # Start here (beginner map)
 
-TextureFlow is a **phone app + cloud brain + voice bridge**.
+TextureFlow / Moth Market is primarily the **Android phone app**.
 
-Read this file first. Then open only the folder you need.
+**Convex and VoiceOS are stubbed** so you can push the product without cloud or
+a voice host. Those folders remain in the tree for now and can be deleted later.
 
-## The big picture (4 parts)
+## The big picture (current)
 
 ```text
-YOUR PHONE                          THE CLOUD                         YOUR COMPUTER
-───────────                         ─────────                         ─────────────
-app/          Android phone app     convex/     backend database      texture-bridge/
-              reads notifications               & rules               talk to the phone
-              shows the eye UI                                        via voice tools
-              can reply/snooze
+YOUR PHONE
+───────────
+app/          Android phone app
+              notifications/  capture + lockout recovery
+              bank/           replyable notification bank
+              ui/             Moth Market chat UI
+              actions/        confirmed reply / snooze / dismiss
 
-                                    intelligence/   ranking helper     tools/
-                                    shared/         shared types       demo & check scripts
+OPTIONAL / STUBBED (safe to ignore for now)
+──────────
+convex/           cloud backend (stubbed)
+texture-bridge/   VoiceOS MCP bridge (fixture-only)
+intelligence/     urgency helper (works offline)
+shared/           shared types
+tools/            scripts (live Convex checks skip without credentials)
+docs/             architecture notes (partly historical)
 ```
 
 ## What each top-level folder is for
 
 | Folder | Plain English | When you open it |
 |--------|---------------|------------------|
-| **`app/`** | The Android phone app (what you install) | Changing UI, notifications, replies, haptics |
-| **`convex/`** | Cloud backend (devices, events, proposals) | Changing server rules / data |
-| **`texture-bridge/`** | Voice/MCP bridge (computer ↔ phone proposals) | Voice tools, demos with a laptop agent |
+| **`app/`** | The Android phone app (what you install) | UI, notifications, bank, replies, haptics — see `app/README.md` |
+| **`convex/`** | Cloud backend — **stubbed / ignore for now** | Only if restoring live sync later |
+| **`texture-bridge/`** | Voice/MCP bridge — **fixture-only stub** | Only if restoring VoiceOS later |
 | **`intelligence/`** | Decides what is urgent (with safe fallback) | Priority / ranking logic |
 | **`shared/`** | Shared contracts used by several parts | Types that must match everywhere |
 | **`tools/`** | Scripts to test and demo | Running checks, smoke tests |
@@ -35,8 +43,7 @@ app/          Android phone app     convex/     backend database      texture-br
 1. This file (`START_HERE.md`)
 2. [`app/README.md`](app/README.md) — phone app map
 3. [`docs/CODE_MAP.md`](docs/CODE_MAP.md) — “where does feature X live?”
-4. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — full system (advanced)
-5. Only then: the other docs in [`docs/`](docs/)
+4. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — full system (advanced; some Convex/VoiceOS sections are historical)
 
 ## One sentence per major idea
 
@@ -50,4 +57,4 @@ app/          Android phone app     convex/     backend database      texture-br
 
 - `node_modules/`, `**/build/`, `.gradle/` — generated
 - `.env.local`, `.env.convex` — secrets (use `.env.example` as the template)
-- `convex/_generated/` — created by Convex tooling
+- `convex/_generated/` — created by Convex tooling (unused while stubbed)

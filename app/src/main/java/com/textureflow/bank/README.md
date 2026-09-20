@@ -1,30 +1,49 @@
-# `bank/` — paired outbound notification bank (planned)
+# `bank/` — paired outbound notification bank
 
-This folder is reserved for the **messenger-agnostic** paired “bank” design:
+Messenger-agnostic local backend for cold-start sends:
 
 - keep the latest **replyable** conversation notification for a peer × app
-- **snooze** it so the shade stays clean
-- **wake** it (~100 ms reschedule) to cold-start a send
-- use a local **outbox** for unsent follow-ups
-- **refill** with a branded handshake when both phones are online
+- **snooze** it so the shade stays clean (`BankArming`, 55 min rolling)
+- **wake** it (~100 ms re-snooze) to cold-start a send
+- queue outbound texts in a local **outbox** until a REPLY handle is live
+- stub **handshake refill** when the bank slot is empty (prefs only; no network)
 
-WhatsApp / Telegram / Instagram / SMS are examples of `packageName` lanes — not hard-coded owners of this module.
+WhatsApp / Telegram / Instagram / SMS are `packageName` lanes — not hard-coded owners.
 
-## Planned files (not built yet)
+## Read in this order
+
+1. `BankKey` / `BankEntry` / `BankState` — identity + slot shape  
+2. `NotificationBank` — facade you call from the listener / UI  
+3. `BankArming` — snooze / wake timings  
+4. `OutboundMessageOutbox` / `HandshakeRefill` — queue + stub refill  
+
+## Files
 
 ```text
 bank/
-  NotificationBank.java       ← state machine per (peer × package)
-  BankStore.java              ← durable keys + snooze deadlines
-  BankArming.java             ← snooze / refresh / wake
-  OutboundMessageOutbox.java  ← queued texts until REPLY handle is live
-  HandshakeRefill.java        ← peer online branded refill
-  README.md                   ← this file
+  NotificationBank.java        ← start here (facade)
+  BankKey.java                 peer × package identity
+  BankEntry.java               durable slot (+ state, snoozeUntil)
+  BankState.java               EMPTY → ARMED_SNOOZED → WAKING → LIVE → …
+  BankStore.java               SharedPreferences JSON
+  BankArming.java              arm / refresh / wake helpers
+  OutboundMessage.java         queued outbound text
+  OutboundMessageOutbox.java   durable local queue (cap 200)
+  HandshakeRefill.java         stub refill requests (no network)
+  README.md                    this file
 ```
 
-Until those exist, related behavior still lives in:
+## Tests
 
-- `notifications/` — capture + snooze APIs
+`app/src/test/java/com/textureflow/bank/`
+
+## Listener wiring
+
+`TextureNotificationListenerService.handlePosted` calls `bank().adoptAndArm(...)`
+inside an isolated try/catch so bank/snooze failures never poison listener health.
+
+## Related modules
+
+- `notifications/` — capture + `NotificationControl` snooze APIs
 - `actions/` — live RemoteInput send
-- `connection/` — cloud outbox (different from local messenger outbox)
-- `ui/` — user confirm / voice
+- `connection/` — cloud outbox (different from this local messenger outbox)

@@ -14,10 +14,18 @@ public final class ConnectionEngineFactory {
         runtime.configureOwner(config.ownerId());
 
         ClaimStore claims = new SharedPreferencesClaimStore(application);
-        RemoteGateway gateway = new ConvexHttpGateway(config);
+        RemoteGateway gateway;
+        OutboxDelivery delivery;
+        if (config.isStub()) {
+            gateway = new StubRemoteGateway();
+            delivery = new LocalAckOutboxDelivery();
+        } else {
+            gateway = new ConvexHttpGateway(config);
+            delivery = new ConvexOutboxDelivery(gateway, claims);
+        }
         OutboxCoordinator outbox = new OutboxCoordinator(
                 new AndroidDurableOutbox(runtime.outbox()),
-                new ConvexOutboxDelivery(gateway, claims),
+                delivery,
                 new BackoffPolicy(1_000L, 300_000L, 0.20),
                 8,
                 120_000L);

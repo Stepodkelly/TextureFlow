@@ -20,6 +20,7 @@ import javax.crypto.spec.GCMParameterSpec;
 /** Runtime values override optional BuildConfig fields; no credential is defined in source. */
 public final class ConnectionConfigStore {
     private static final String PREFERENCES = "textureflow-connection-config";
+    private static final String MODE = "connection-mode";
     private static final String URL = "convex-url";
     private static final String OWNER = "owner-id";
     private static final String DEVICE_TOKEN = "device-actor-token";
@@ -39,7 +40,9 @@ public final class ConnectionConfigStore {
             String deviceActorToken,
             String oidcToken,
             String deviceDisplayName) {
+        ConnectionMode mode = isStubUrl(convexUrl) ? ConnectionMode.STUB : ConnectionMode.LIVE;
         SharedPreferences.Editor editor = preferences(context).edit()
+                .putString(MODE, mode.name())
                 .putString(URL, convexUrl)
                 .putString(OWNER, ownerId)
                 .putString(DISPLAY_NAME, deviceDisplayName);
@@ -48,9 +51,39 @@ public final class ConnectionConfigStore {
         if (!editor.commit()) throw new IllegalStateException("Could not persist connection configuration");
     }
 
+    public static void enableLocalStub(Context context, String deviceId) {
+        String displayName = Build.MANUFACTURER + " " + Build.MODEL;
+        String version = first(buildField("VERSION_NAME"), "0.1.0");
+        String owner = first(buildField("TEXTUREFLOW_OWNER_ID"), "local-owner");
+        ConnectionConfig stub = ConnectionConfig.localStub(
+                blank(owner) ? "local-owner" : owner, deviceId, displayName, version);
+        SharedPreferences.Editor editor = preferences(context).edit()
+                .putString(MODE, ConnectionMode.STUB.name())
+                .putString(URL, ConnectionConfig.STUB_URL)
+                .putString(OWNER, stub.ownerId())
+                .putString(DISPLAY_NAME, stub.deviceDisplayName());
+        putEncryptedOrRemove(editor, DEVICE_TOKEN, stub.deviceActorToken());
+        putEncryptedOrRemove(editor, OIDC_TOKEN, "");
+        putEncryptedOrRemove(editor, USER_ACTION_TOKEN, "stub-user-token");
+        if (!editor.commit()) throw new IllegalStateException("Could not persist local stub configuration");
+    }
+
     public static ConnectionConfig load(Context context, String deviceId) {
         SharedPreferences values = preferences(context);
+        String modeValue = values.getString(MODE, null);
         String url = first(values.getString(URL, null), buildField("CONVEX_URL"));
+        // Default is STUB. Live Convex only when the user explicitly saved LIVE mode.
+        ConnectionMode mode = parseMode(modeValue);
+        if (mode != ConnectionMode.LIVE) {
+            String owner = first(values.getString(OWNER, null), buildField("TEXTUREFLOW_OWNER_ID"));
+            if (blank(owner)) owner = "local-owner";
+            String displayName = first(
+                    values.getString(DISPLAY_NAME, null), buildField("TEXTUREFLOW_DEVICE_NAME"));
+            if (blank(displayName)) displayName = Build.MANUFACTURER + " " + Build.MODEL;
+            String version = first(buildField("VERSION_NAME"), "0.1.0");
+            return ConnectionConfig.localStub(owner, deviceId, displayName.trim(), version);
+        }
+
         String owner = first(values.getString(OWNER, null), buildField("TEXTUREFLOW_OWNER_ID"));
         String deviceToken = first(
                 decrypt(values.getString(DEVICE_TOKEN, null)), buildField("TEXTUREFLOW_DEVICE_TOKEN"));
@@ -60,7 +93,7 @@ public final class ConnectionConfigStore {
                 values.getString(DISPLAY_NAME, null), buildField("TEXTUREFLOW_DEVICE_NAME"));
         if (blank(displayName)) displayName = Build.MANUFACTURER + " " + Build.MODEL;
         String version = first(buildField("VERSION_NAME"), "0.1.0");
-        return ConnectionConfig.defaults(
+        return ConnectionConfig.liveDefaults(
                 url, owner, deviceId, deviceToken, oidcToken, displayName.trim(), version);
     }
 
@@ -79,7 +112,10 @@ public final class ConnectionConfigStore {
 
     public static String loadUserActionToken(Context context) {
         String value = decrypt(preferences(context).getString(USER_ACTION_TOKEN, null));
-        if (blank(value)) return null;
+        if (blank(value)) {
+            if (isStub(context, "any")) return "stub-user-token";
+            return null;
+        }
         value = value.trim();
         String prefix = "TEXTUREFLOW_USER_TOKEN=";
         int prefixIndex = value.indexOf(prefix);
@@ -107,6 +143,31 @@ public final class ConnectionConfigStore {
         } catch (RuntimeException invalidOrMissing) {
             return false;
         }
+    }
+
+    public static boolean isStub(Context context, String deviceId) {
+        try {
+            return load(context, deviceId).isStub();
+        } catch (RuntimeException ignored) {
+            return true;
+        }
+    }
+
+    private static ConnectionMode parseMode(String modeValue) {
+        if (modeValue != null) {
+            try {
+                return ConnectionMode.valueOf(modeValue.trim().toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+                // fall through
+            }
+        }
+        return ConnectionMode.STUB;
+    }
+
+    private static boolean isStubUrl(String url) {
+        if (blank(url)) return true;
+        String value = url.trim().toLowerCase();
+        return value.startsWith("stub:") || "local".equals(value) || "none".equals(value);
     }
 
     private static SharedPreferences preferences(Context context) {

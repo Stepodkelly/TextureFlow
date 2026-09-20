@@ -7,6 +7,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
@@ -16,6 +17,7 @@ import android.os.Looper;
 import android.util.Log;
 
 import com.textureflow.notifications.TextureNotificationListenerService;
+import com.textureflow.notifications.ListenerHealthPolicy;
 import com.textureflow.notifications.NotificationRuntime;
 import com.textureflow.data.ListenerHealthStore;
 
@@ -26,8 +28,7 @@ public final class TextureFlowConnectionService extends Service {
     private static final String CHANNEL_ID = "textureflow_connection";
     private static final String LOG_TAG = "TextureFlowConnection";
     private static final int NOTIFICATION_ID = 0x5446;
-    private static final long LISTENER_RECONCILIATION_MS = 15_000L;
-    private static final long LISTENER_STALE_AFTER_MS = 35_000L;
+    private static final long LISTENER_RECONCILIATION_MS = 8_000L;
 
     private ConnectionEngine engine;
     private NotificationManager notificationManager;
@@ -44,17 +45,17 @@ public final class TextureFlowConnectionService extends Service {
         listenerHealthCheck = new Runnable() {
             @Override
             public void run() {
-                ListenerHealthStore.Snapshot health = NotificationRuntime.get(
-                        getApplicationContext()).health().read();
-                long reconciliationAge = System.currentTimeMillis() - health.lastReconciledAt;
-                if (!health.connected || health.lastReconciledAt <= 0L
-                        || reconciliationAge < 0L
-                        || reconciliationAge > LISTENER_STALE_AFTER_MS) {
-                    TextureNotificationListenerService.forceStaleRebind(
-                            getApplicationContext());
+                Context application = getApplicationContext();
+                ListenerHealthStore.Snapshot health =
+                        NotificationRuntime.get(application).health().read();
+                long now = System.currentTimeMillis();
+                boolean live = TextureNotificationListenerService.hasLiveConnection();
+                if (ListenerHealthPolicy.needsForceRestart(health, now, live)) {
+                    NotificationRuntime.get(application).health()
+                            .markStale(now, "connection service force restart");
+                    TextureNotificationListenerService.forceStaleRebind(application);
                 } else {
-                    TextureNotificationListenerService.requestHealthReconciliation(
-                            getApplicationContext());
+                    TextureNotificationListenerService.requestHealthReconciliation(application);
                 }
                 healthHandler.postDelayed(this, LISTENER_RECONCILIATION_MS);
             }

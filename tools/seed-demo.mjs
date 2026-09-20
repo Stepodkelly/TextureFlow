@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 
+if (!process.env.CONVEX_URL) {
+  console.log("SKIP seed-demo: CONVEX_URL unset (Convex stubbed).");
+  process.exit(0);
+}
+
 for (const name of [
   "CONVEX_URL",
   "TEXTUREFLOW_OWNER_ID",

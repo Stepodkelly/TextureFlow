@@ -1,6 +1,11 @@
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 
+if (!process.env.CONVEX_URL) {
+  console.log("SKIP check-android-live: CONVEX_URL unset (Convex stubbed).");
+  process.exit(0);
+}
+
 for (const name of ["CONVEX_URL", "TEXTUREFLOW_OWNER_ID", "TEXTUREFLOW_BRIDGE_TOKEN"]) {
   if (!process.env[name]) throw new Error(`${name} is required.`);
 }

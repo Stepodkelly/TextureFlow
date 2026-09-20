@@ -1,25 +1,17 @@
 # Cloud backend (`convex/`)
 
-This is the **server** side of TextureFlow (Convex).
+**Stubbed / unused by default.** The Android app runs in local stub mode and
+does not call these functions.
 
-Plain English: the phone syncs notification events here, and the cloud helps
-decide attention, store proposals, and hand commands back to the phone.
+Keep this folder for now if you want to restore cloud sync later; otherwise it
+is safe to delete in a follow-up cleanup.
 
-## Start with these files
-
-| File | What it is |
-|------|------------|
-| `schema.ts` | The database tables |
-| `devices.ts` | Phone registration / online status |
-| `events.ts` | Notification events from phones |
-| `attention.ts` | What to surface next |
-| `proposals.ts` | “I want to do X” before confirm |
-| `commands.ts` | Work waiting for the phone |
-| `receipts.ts` | Proof of what the phone did |
-| `lib/` | Shared helpers (auth, validation, tracing) |
-| `_generated/` | Auto-generated — do not edit by hand |
-
-## Beginner tip
-
-Change **schema + one feature file** together. Read `docs/ARCHITECTURE.md` before
-big changes.
+| File | What it was |
+|------|-------------|
+| `schema.ts` | Database tables |
+| `devices.ts` | Phone registration |
+| `events.ts` | Notification events |
+| `attention.ts` | Attention queue |
+| `proposals.ts` | Confirm-before-execute proposals |
+| `commands.ts` | Commands for the phone |
+| `receipts.ts` | Execution receipts |

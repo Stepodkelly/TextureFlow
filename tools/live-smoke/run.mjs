@@ -4,6 +4,11 @@ import { randomUUID } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 
+if (!process.env.CONVEX_URL) {
+  console.log("SKIP live-smoke: CONVEX_URL unset (Convex stubbed).");
+  process.exit(0);
+}
+
 const CONTRACT_VERSION = 1;
 const DEFAULT_STEP_TIMEOUT_MS = 10_000;
 const DEFAULT_RUN_TIMEOUT_MS = 60_000;

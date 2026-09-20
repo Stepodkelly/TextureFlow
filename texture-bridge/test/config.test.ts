@@ -1,19 +1,25 @@
-import { describe, expect, it } from "vitest";
-import { readConfig } from "../src/config.js";
+import { describe, expect, it, vi } from "vitest";
+import { createBackend, readConfig } from "../src/config.js";
 
 describe("bridge configuration", () => {
-  it("defaults explicitly to labeled fixture mode", () => {
+  it("defaults to fixture mode", () => {
     expect(readConfig({})).toMatchObject({
       adapter: "fixture",
       ownerId: "demo-owner"
     });
   });
 
-  it("fails closed on an unknown adapter instead of silently entering rehearsal", () => {
-    expect(() => readConfig({ TEXTUREFLOW_ADAPTER: "convxe" })).toThrow();
+  it("forces fixture even when convex is requested (stubbed)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(readConfig({ TEXTUREFLOW_ADAPTER: "convex" })).toMatchObject({
+      adapter: "fixture"
+    });
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
-  it("requires a deployment URL for live Convex mode", () => {
-    expect(() => readConfig({ TEXTUREFLOW_ADAPTER: "convex" })).toThrow();
+  it("createBackend always returns the fixture adapter", () => {
+    const backend = createBackend(readConfig({}));
+    expect(backend.constructor.name).toBe("FixtureAdapter");
   });
 });

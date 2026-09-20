@@ -3,6 +3,11 @@ import {
   HttpConvexCaller,
 } from "../texture-bridge/dist/adapters/convex.js";
 
+if (!process.env.CONVEX_URL) {
+  console.log("SKIP verify-bridge-live: CONVEX_URL unset (Convex / VoiceOS stubbed).");
+  process.exit(0);
+}
+
 for (const name of ["CONVEX_URL", "TEXTUREFLOW_OWNER_ID", "TEXTUREFLOW_BRIDGE_TOKEN"]) {
   if (!process.env[name]) {
     throw new Error(`${name} is required.`);

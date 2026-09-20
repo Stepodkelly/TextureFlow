@@ -1,12 +1,15 @@
-# `ui/` — what you see and hear on the phone
+# `ui/` — Moth Market screen + voice
 
 | File | Role |
 |------|------|
-| `MainActivity.java` | Main screen + attention loop + confirm actions |
+| `MainActivity.java` | Chat list, settings ⋮, attention loop, confirm actions |
+| `MothMarketTheme.java` | Colors, card chrome, logo / avatar helpers |
 | `ConversationalVoiceController.java` | Speak / listen |
-| `VoiceCommandParser.java` | Turn spoken phrases into reply drafts |
-| `EyeOfHorusView.java` | Eye visual state |
+| `VoiceCommandParser.java` | Spoken phrases → reply drafts |
+| `EyeOfHorusView.java` | Legacy eye visual (still used in some states) |
 | `HapticTextureEngine.java` | Bridges UI events to sensory cues |
 | `TextureBackgroundView.java` | Background texture scrolling |
 | `TextureDrawableFactory.java` | Drawable helpers |
 | `ShakeUrgencyController.java` | Shake → urgency behavior |
+
+Drawables / colors: `app/src/main/res/drawable*`, `res/values/colors_moth.xml`.

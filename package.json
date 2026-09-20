@@ -12,8 +12,8 @@
     "test:rehearsal": "node --test tools/test/rehearsal.test.mjs",
     "check:bridge": "npm run check --workspace @textureflow/voiceos-bridge",
     "check:intelligence": "npm run test --workspace @textureflow/intelligence",
-    "convex:dev": "convex dev",
-    "convex:deploy": "convex deploy",
+    "convex:dev": "echo 'Convex is stubbed. Skipping convex dev.' && exit 0",
+    "convex:deploy": "echo 'Convex is stubbed. Skipping convex deploy.' && exit 0",
     "check": "npm run check:contracts && npm run test:rehearsal && npm run check:bridge && npm run check:intelligence"
   },
   "dependencies": {

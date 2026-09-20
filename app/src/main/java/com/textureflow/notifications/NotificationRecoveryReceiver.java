@@ -11,6 +11,7 @@ public final class NotificationRecoveryReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         NotificationHealthJobService.schedule(context);
+        NotificationWatchdogScheduler.schedule(context);
         TextureNotificationListenerService.requestRebindNow(context);
         NotificationRuntime runtime = NotificationRuntime.get(context);
         if (ConnectionConfigStore.isConfigured(context, runtime.getDeviceId())) {

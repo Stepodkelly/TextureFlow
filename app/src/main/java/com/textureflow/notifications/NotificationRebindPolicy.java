@@ -3,7 +3,7 @@ package com.textureflow.notifications;
 final class NotificationRebindPolicy {
     private static final int MAX_EXPONENT = 6;
     private static final long BASE_DELAY_MS = 1_000L;
-    private static final long MAX_DELAY_MS = 60_000L;
+    private static final long MAX_DELAY_MS = 20_000L;
 
     private NotificationRebindPolicy() {}
 

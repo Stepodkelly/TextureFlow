@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="moth_bg">#E6EBF2</color>
+    <color name="moth_surface">#EEF2F7</color>
+    <color name="moth_surface_raised">#F7F9FC</color>
+    <color name="moth_logo_well">#D8DEE8</color>
+    <color name="moth_ink">#1A1F27</color>
+    <color name="moth_muted">#6B7585</color>
+    <color name="moth_search">#D3DAE5</color>
+    <color name="moth_chip">#E2E7EF</color>
+    <color name="moth_nav">#D0D7E1</color>
+    <color name="moth_nav_selected">#E9EEF5</color>
+    <color name="moth_placeholder">#D9E0EA</color>
+    <color name="moth_whatsapp">#25D366</color>
+    <color name="moth_telegram">#229ED9</color>
+    <color name="moth_instagram">#C13584</color>
+    <color name="moth_signal">#3A76F0</color>
+    <color name="moth_sms">#34C759</color>
+    <color name="moth_messenger">#0084FF</color>
+    <color name="moth_default_glow">#9AA3B2</color>
+    <color name="moth_bubble_in">#FFFFFF</color>
+    <color name="moth_bubble_out">#DCF8C6</color>
+</resources>

@@ -9,6 +9,10 @@ import com.textureflow.actions.ConfirmedProposal;
 import com.textureflow.actions.LiveActionRegistry;
 import com.textureflow.actions.NotificationActionExecutor;
 import com.textureflow.actions.NotificationControl;
+import com.textureflow.bank.BankStore;
+import com.textureflow.bank.HandshakeRefill;
+import com.textureflow.bank.NotificationBank;
+import com.textureflow.bank.OutboundMessageOutbox;
 import com.textureflow.data.ActionReceiptStore;
 import com.textureflow.data.DeviceIdentity;
 import com.textureflow.data.ListenerHealthStore;
@@ -30,6 +34,7 @@ public final class NotificationRuntime {
     private final ActionReceiptStore receipts;
     private final ListenerHealthStore health;
     private final LiveActionRegistry liveActions;
+    private final NotificationBank bank;
 
     private NotificationRuntime(Context context) {
         this.context = context.getApplicationContext();
@@ -40,6 +45,10 @@ public final class NotificationRuntime {
         this.receipts = new ActionReceiptStore(database);
         this.health = new ListenerHealthStore(database);
         this.liveActions = new LiveActionRegistry();
+        this.bank = new NotificationBank(
+                new BankStore(this.context),
+                new OutboundMessageOutbox(this.context),
+                new HandshakeRefill(this.context));
     }
 
     public static NotificationRuntime get(Context context) {
@@ -57,6 +66,7 @@ public final class NotificationRuntime {
     public ActionReceiptStore receipts() { return receipts; }
     public ListenerHealthStore health() { return health; }
     public LiveActionRegistry liveActions() { return liveActions; }
+    public NotificationBank bank() { return bank; }
 
     /** Called by authenticated transport setup; this is an opaque account ID, not a secret token. */
     public void configureOwner(String ownerId) {

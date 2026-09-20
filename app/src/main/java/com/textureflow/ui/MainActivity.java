@@ -25,22 +25,28 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 
 import com.textureflow.BuildConfig;
+import com.textureflow.R;
 import com.textureflow.connection.ConnectionConfigStore;
 import com.textureflow.connection.ConnectionConfig;
 import com.textureflow.connection.ConnectionStatusStore;
 import com.textureflow.connection.CoreActionClient;
+import com.textureflow.connection.LocalCoreActionClient;
 import com.textureflow.connection.TextureFlowConnectionController;
 import com.textureflow.actions.ActionType;
 import com.textureflow.data.ListenerHealthStore;
 import com.textureflow.data.StoredNotificationEvent;
+import com.textureflow.notifications.ListenerHealthPolicy;
 import com.textureflow.notifications.NotificationHealthJobService;
 import com.textureflow.notifications.NotificationRuntime;
+import com.textureflow.notifications.NotificationWatchdogScheduler;
 import com.textureflow.notifications.TextureNotificationListenerService;
 import com.textureflow.policy.AttentionQueuePolicy;
 import com.textureflow.texture.SensoryProfile;
@@ -48,6 +54,7 @@ import com.textureflow.texture.TextureCue;
 import com.textureflow.texture.TextureCueScheduler;
 
 import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -77,10 +84,10 @@ public final class MainActivity extends Activity {
         void onCancelRequested(String proposalId);
     }
 
-    private enum Page { HOME, PEOPLE, SETTINGS }
+    private enum Page { CHATS, CHAT, SETTINGS, FLOWS }
 
-    private static final int INK = Color.rgb(30, 36, 33);
-    private static final int MUTED = Color.rgb(78, 88, 82);
+    private static final int INK = MothMarketTheme.INK;
+    private static final int MUTED = MothMarketTheme.MUTED;
     private static final int TEAL = Color.rgb(38, 118, 110);
     private static final int AMBER = Color.rgb(178, 124, 52);
     private static final int CRIMSON = Color.rgb(142, 61, 58);
@@ -96,12 +103,17 @@ public final class MainActivity extends Activity {
     private ConversationalVoiceController voiceController;
     private final ExecutorService actionExecutor = Executors.newSingleThreadExecutor();
 
-    private FrameLayout homePage;
-    private FrameLayout peoplePage;
+    private FrameLayout chatsPage;
+    private FrameLayout chatThreadPage;
     private FrameLayout settingsPage;
-    private Button homeTab;
-    private Button peopleTab;
-    private Button settingsTab;
+    private FrameLayout flowsPage;
+    private LinearLayout chatsTab;
+    private LinearLayout flowsTab;
+    private LinearLayout chatListContainer;
+    private EditText searchField;
+    private TextView chatsEmpty;
+    private final List<PersonTimeline> cachedPeople = new ArrayList<>();
+    private String activeConversationKey;
 
     private EyeOfHorusView eyeView;
     private LinearLayout attentionPanel;
@@ -118,11 +130,8 @@ public final class MainActivity extends Activity {
     private Button confirmButton;
     private Button cancelButton;
 
-    private LinearLayout peopleList;
-    private LinearLayout conversationView;
-    private TextView peopleEmpty;
-    private TextView conversationTitle;
     private LinearLayout conversationMessages;
+    private TextView conversationTitle;
 
     private TextView connectionStatus;
     private TextView sessionStatus;
@@ -138,7 +147,7 @@ public final class MainActivity extends Activity {
     private Switch shakeSwitch;
     private Switch reducedTextureSwitch;
 
-    private Page currentPage = Page.HOME;
+    private Page currentPage = Page.CHATS;
     private ConnectionState connectionState = ConnectionState.DISCONNECTED;
     private SessionState sessionState = SessionState.IDLE;
     private StoredNotificationEvent currentAttention;
@@ -147,6 +156,7 @@ public final class MainActivity extends Activity {
     private int activeQueueSize;
     private String currentProposalId;
     private CoreActionClient.Proposal activePhoneProposal;
+    private LocalCoreActionClient localActionClient;
     private StoredNotificationEvent activeProposalEvent;
     private boolean phoneActionBusy;
     private ActionRequestListener actionRequestListener;
@@ -171,7 +181,10 @@ public final class MainActivity extends Activity {
         initializeVoice();
 
         FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(MothMarketTheme.BG);
         backgroundView = new TextureBackgroundView(this);
+        backgroundView.setReducedTexture(true);
+        backgroundView.setAlpha(0f);
         root.addView(backgroundView, matchFrame());
 
         FrameLayout content = new FrameLayout(this);
@@ -179,190 +192,224 @@ public final class MainActivity extends Activity {
         contentParams.setMargins(0, 0, 0, dp(104));
         root.addView(content, contentParams);
 
-        homePage = buildHomePage();
-        peoplePage = buildPeoplePage();
+        chatsPage = buildChatsPage();
+        chatThreadPage = buildChatThreadPage();
         settingsPage = buildSettingsPage();
-        content.addView(homePage, matchFrame());
-        content.addView(peoplePage, matchFrame());
+        flowsPage = buildFlowsPage();
+        content.addView(chatsPage, matchFrame());
+        content.addView(chatThreadPage, matchFrame());
         content.addView(settingsPage, matchFrame());
+        content.addView(flowsPage, matchFrame());
         root.addView(buildNavigation(), navigationParams());
 
         textureEngine.setListener(new TextureCueScheduler.Listener() {
             @Override
             public void onCueStarted(TextureCue cue, String correlationId) {
-                backgroundView.showCue(cue, reducedTextureSwitch.isChecked()
+                backgroundView.showCue(cue, reducedTextureSwitch == null
+                        || reducedTextureSwitch.isChecked()
                         || textureEngine.getProfile().reducesContinuousTexture());
                 EyeOfHorusView.State state = eyeStateForCue(cue);
-                if (state != null) eyeView.setState(state);
+                if (state != null && eyeView != null) eyeView.setState(state);
             }
 
             @Override
             public void onCueFinished(TextureCue cue, String correlationId, boolean cancelled) {
-                eyeView.setState(eyeStateForSurface());
+                if (eyeView != null) eyeView.setState(eyeStateForSurface());
             }
         });
 
         setContentView(root);
         restoreSensoryPreferences();
         shakeController = new ShakeUrgencyController(this, this::speakUrgentItem);
-        showPage(Page.HOME);
+        showPage(Page.CHATS);
         renderConnection(ConnectionState.DISCONNECTED, "Waiting for the Core link");
+        renderPeople(Collections.emptyList());
     }
 
-    private FrameLayout buildHomePage() {
+    private FrameLayout buildChatsPage() {
         LinearLayout content = pageColumn();
-        content.setGravity(Gravity.CENTER_HORIZONTAL);
+        content.setPadding(dp(20), dp(28), dp(20), dp(12));
+        content.setClipChildren(false);
+        content.setClipToPadding(false);
 
+        LinearLayout topBar = new LinearLayout(this);
+        topBar.setOrientation(LinearLayout.HORIZONTAL);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
+
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.moth_logo);
+        logo.setContentDescription("Moth Market");
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        topBar.addView(logo, new LinearLayout.LayoutParams(dp(52), dp(52)));
+
+        View spacer = new View(this);
+        topBar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+
+        ImageButton more = circleIconButton(R.drawable.ic_more_vert);
+        more.setContentDescription("Settings");
+        more.setOnClickListener(view -> showPage(Page.SETTINGS));
+        topBar.addView(more, new LinearLayout.LayoutParams(dp(42), dp(42)));
+
+        ImageButton add = circleIconButton(R.drawable.ic_plus);
+        add.setContentDescription("New chat");
+        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(dp(42), dp(42));
+        addParams.setMargins(dp(10), 0, 0, 0);
+        add.setOnClickListener(view -> new AlertDialog.Builder(this)
+                .setTitle("New chat")
+                .setMessage("Starting a new chat from Moth Market is coming next. For now, open a person from the list.")
+                .setPositiveButton("OK", null)
+                .show());
+        topBar.addView(add, addParams);
+        content.addView(topBar, matchWrap());
+
+        LinearLayout searchRow = new LinearLayout(this);
+        searchRow.setOrientation(LinearLayout.HORIZONTAL);
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        searchRow.setPadding(dp(18), dp(12), dp(18), dp(12));
+        searchRow.setBackground(MothMarketTheme.roundRect(MothMarketTheme.SEARCH, 26f, this));
+        ImageView searchIcon = new ImageView(this);
+        searchIcon.setImageResource(R.drawable.ic_search);
+        searchIcon.setContentDescription("Search");
+        searchRow.addView(searchIcon, new LinearLayout.LayoutParams(dp(18), dp(18)));
+        searchField = new EditText(this);
+        searchField.setHint("Search");
+        searchField.setHintTextColor(MUTED);
+        searchField.setTextColor(INK);
+        searchField.setBackground(new ColorDrawable(TRANSPARENT));
+        searchField.setSingleLine(true);
+        searchField.setTextSize(16);
+        searchField.setPadding(dp(10), dp(2), dp(4), dp(2));
+        searchField.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                filterChatList(s == null ? "" : s.toString());
+            }
+            @Override public void afterTextChanged(Editable s) {}
+        });
+        searchRow.addView(searchField, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout.LayoutParams searchParams = matchWrap();
+        searchParams.setMargins(0, dp(22), 0, dp(22));
+        content.addView(searchRow, searchParams);
+
+        chatListContainer = new LinearLayout(this);
+        chatListContainer.setOrientation(LinearLayout.VERTICAL);
+        chatListContainer.setClipChildren(false);
+        chatListContainer.setClipToPadding(false);
+        content.addView(chatListContainer, matchWrap());
+
+        chatsEmpty = text("No conversations yet.", 16, MUTED, false);
+        chatsEmpty.setGravity(Gravity.CENTER);
+        chatsEmpty.setPadding(dp(12), dp(28), dp(12), dp(28));
+        chatsEmpty.setVisibility(View.GONE);
+
+        // Keep legacy action widgets attached but hidden so Core/voice paths stay safe.
+        attachHiddenLegacyControls(content);
+
+        return scrollPage(content);
+    }
+
+    private void attachHiddenLegacyControls(LinearLayout content) {
         eyeView = new EyeOfHorusView(this);
-        LinearLayout.LayoutParams eyeParams = new LinearLayout.LayoutParams(dp(76), dp(76));
-        eyeParams.setMargins(0, dp(4), 0, dp(4));
-        content.addView(eyeView, eyeParams);
-
-        TextView title = text("TextureFlow", 24, INK, true);
-        title.setGravity(Gravity.CENTER);
-        title.setAccessibilityHeading(true);
-        content.addView(title, matchWrap());
+        eyeView.setVisibility(View.GONE);
+        content.addView(eyeView, new LinearLayout.LayoutParams(1, 1));
 
         attentionPanel = surface(dp(30));
         attentionPanel.setVisibility(View.GONE);
         attentionMeta = text("", 14, MUTED, true);
         attentionPanel.addView(attentionMeta);
-        LinearLayout notificationContents = new LinearLayout(this);
-        notificationContents.setOrientation(LinearLayout.VERTICAL);
         attentionBody = text("", 20, INK, false);
-        attentionBody.setLineSpacing(dp(3), 1f);
-        notificationContents.addView(attentionBody, topMargin(dp(9)));
+        attentionPanel.addView(attentionBody);
         attentionReason = text("", 13, MUTED, false);
-        notificationContents.addView(attentionReason, topMargin(dp(10)));
-        ScrollView notificationWindow = new ScrollView(this);
-        notificationWindow.setFillViewport(true);
-        notificationWindow.setVerticalScrollBarEnabled(true);
-        notificationWindow.setScrollbarFadingEnabled(false);
-        notificationWindow.addView(notificationContents, new ScrollView.LayoutParams(-1, -2));
-        textureEngine.attachScrollTexture(notificationWindow, backgroundView::setScrollOffset);
-        LinearLayout.LayoutParams notificationWindowParams = new LinearLayout.LayoutParams(-1, dp(154));
-        attentionPanel.addView(notificationWindow, notificationWindowParams);
-        LinearLayout.LayoutParams attentionParams = new LinearLayout.LayoutParams(-1, dp(226));
-        attentionParams.setMargins(0, dp(22), 0, 0);
-        content.addView(attentionPanel, attentionParams);
+        attentionPanel.addView(attentionReason);
+        content.addView(attentionPanel, matchWrap());
 
         responsePanel = surface(dp(32));
-        responsePanel.setGravity(Gravity.CENTER);
+        responsePanel.setVisibility(View.GONE);
         responseSmile = text("🙂", 42, INK, false);
-        responseSmile.setGravity(Gravity.CENTER);
-        responseSmile.setContentDescription("All caught up");
-        responsePanel.addView(responseSmile, matchWrap());
-
+        responsePanel.addView(responseSmile);
         responseTitle = text("Response", 14, MUTED, true);
-        responseTitle.setVisibility(View.GONE);
-        responsePanel.addView(responseTitle, topMargin(dp(2)));
-
+        responsePanel.addView(responseTitle);
         responseEditor = new EditText(this);
-        responseEditor.setTextColor(INK);
-        responseEditor.setHintTextColor(MUTED);
-        responseEditor.setTextSize(18);
-        responseEditor.setHint("Write a response");
-        responseEditor.setMinHeight(dp(78));
-        responseEditor.setMaxHeight(dp(108));
-        responseEditor.setVerticalScrollBarEnabled(true);
-        responseEditor.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        responseEditor.setGravity(Gravity.TOP | Gravity.START);
-        responseEditor.setPadding(dp(16), dp(14), dp(16), dp(14));
-        responseEditor.setBackground(TextureDrawableFactory.texturedField(this, dp(22)));
-        responseEditor.setInputType(InputType.TYPE_CLASS_TEXT
-                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         responseEditor.setVisibility(View.GONE);
-        responseEditor.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence value, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence value, int start, int before, int count) {}
-            @Override public void afterTextChanged(Editable value) {
-                if (activePhoneProposal == null
-                        || activePhoneProposal.actionType() != ActionType.REPLY
-                        || phoneActionBusy) return;
-                boolean changed = !value.toString().trim().equals(activePhoneProposal.replyMessage());
-                confirmButton.setText(changed ? "Review changes" : "Send now");
-                if (changed) {
-                    responseStatus.setText("Reply changed. Review the revised exact preview before sending.");
-                    responseStatus.setVisibility(View.VISIBLE);
-                }
-            }
-        });
-        textureEngine.attachGlassControl(responseEditor);
-        textureEngine.attachScrollTexture(responseEditor);
-        responsePanel.addView(responseEditor, topMargin(dp(8)));
-
+        responsePanel.addView(responseEditor);
         responseOptions = new LinearLayout(this);
         responseOptions.setOrientation(LinearLayout.HORIZONTAL);
-        responseOptions.setGravity(Gravity.CENTER);
         responseOptions.setVisibility(View.GONE);
-        responsePanel.addView(responseOptions, topMargin(dp(12)));
-
+        responsePanel.addView(responseOptions);
         responseStatus = text("", 13, MUTED, false);
-        responseStatus.setGravity(Gravity.CENTER);
-        responseStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         responseStatus.setVisibility(View.GONE);
-        responsePanel.addView(responseStatus, topMargin(dp(8)));
-
+        responsePanel.addView(responseStatus);
         talkButton = compactButton("Talk", TEAL);
-        talkButton.setCompoundDrawablesWithIntrinsicBounds(
-                android.R.drawable.ic_btn_speak_now, 0, 0, 0);
-        talkButton.setCompoundDrawablePadding(dp(6));
-        talkButton.setContentDescription("Interrupt speech or start a voice turn");
+        talkButton.setVisibility(View.GONE);
         talkButton.setOnClickListener(this::startVoiceTurn);
-        responsePanel.addView(talkButton, topMargin(dp(10)));
-
+        responsePanel.addView(talkButton);
         confirmButton = compactButton("Confirm", AMBER);
-        confirmButton.setFilterTouchesWhenObscured(true);
-        confirmButton.setOnClickListener(this::requestConfirmation);
         confirmButton.setVisibility(View.GONE);
-        responsePanel.addView(confirmButton, topMargin(dp(10)));
-
+        confirmButton.setOnClickListener(this::requestConfirmation);
+        responsePanel.addView(confirmButton);
         cancelButton = compactButton("Cancel", CRIMSON);
-        cancelButton.setFilterTouchesWhenObscured(true);
-        cancelButton.setOnClickListener(this::requestCancellation);
         cancelButton.setVisibility(View.GONE);
+        cancelButton.setOnClickListener(this::requestCancellation);
         responsePanel.addView(cancelButton);
+        content.addView(responsePanel, matchWrap());
+    }
 
-        content.addView(responsePanel, wideWithTop(dp(14)));
+    private FrameLayout buildChatThreadPage() {
+        LinearLayout content = pageColumn();
+        content.setPadding(dp(14), dp(14), dp(14), dp(12));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        Button back = compactButton("Back", TEAL);
+        back.setOnClickListener(view -> closeConversation());
+        header.addView(back, narrowStart());
+        conversationTitle = text("", 22, INK, true);
+        conversationTitle.setAccessibilityHeading(true);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, -2, 1f);
+        titleParams.setMargins(dp(12), 0, 0, 0);
+        header.addView(conversationTitle, titleParams);
+        content.addView(header, matchWrap());
+
+        conversationMessages = new LinearLayout(this);
+        conversationMessages.setOrientation(LinearLayout.VERTICAL);
+        conversationMessages.setPadding(0, dp(12), 0, dp(12));
+        content.addView(conversationMessages, matchWrap());
         return scrollPage(content);
     }
 
-    private FrameLayout buildPeoplePage() {
+    private FrameLayout buildFlowsPage() {
         LinearLayout content = pageColumn();
-        TextView title = text("People", 28, INK, true);
-        title.setAccessibilityHeading(true);
-        content.addView(title, topMargin(dp(8)));
-
-        peopleList = new LinearLayout(this);
-        peopleList.setOrientation(LinearLayout.VERTICAL);
-        content.addView(peopleList, wideWithTop(dp(16)));
-
-        peopleEmpty = text("No conversations yet.", 18, MUTED, false);
-        peopleEmpty.setGravity(Gravity.CENTER);
-        peopleEmpty.setPadding(dp(20), dp(50), dp(20), dp(50));
-        peopleEmpty.setBackground(TextureDrawableFactory.quietPanel(this, dp(28)));
-        peopleList.addView(peopleEmpty, matchWrap());
-
-        conversationView = new LinearLayout(this);
-        conversationView.setOrientation(LinearLayout.VERTICAL);
-        conversationView.setVisibility(View.GONE);
-        Button back = compactButton("Back", TEAL);
-        back.setCompoundDrawablesWithIntrinsicBounds(android.R.drawable.ic_media_previous, 0, 0, 0);
-        back.setOnClickListener(view -> closeConversation());
-        conversationView.addView(back, narrowStart());
-        conversationTitle = text("", 26, INK, true);
-        conversationTitle.setAccessibilityHeading(true);
-        conversationView.addView(conversationTitle, topMargin(dp(14)));
-        conversationMessages = new LinearLayout(this);
-        conversationMessages.setOrientation(LinearLayout.VERTICAL);
-        conversationView.addView(conversationMessages, wideWithTop(dp(14)));
-        content.addView(conversationView, matchWrap());
+        content.setGravity(Gravity.CENTER_HORIZONTAL);
+        content.setPadding(dp(24), dp(48), dp(24), dp(24));
+        ImageView moth = new ImageView(this);
+        moth.setImageResource(R.drawable.moth_logo);
+        moth.setContentDescription("Moth Market Flows");
+        content.addView(moth, new LinearLayout.LayoutParams(dp(96), dp(96)));
+        TextView title = text("Flows", 28, INK, true);
+        title.setGravity(Gravity.CENTER);
+        content.addView(title, topMargin(dp(16)));
+        TextView body = text("Flows will live here next. For now, Chats is ready.", 16, MUTED, false);
+        body.setGravity(Gravity.CENTER);
+        content.addView(body, topMargin(dp(10)));
         return scrollPage(content);
+    }
+
+    private ImageButton circleIconButton(int iconRes) {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(iconRes);
+        button.setBackground(MothMarketTheme.circle(MothMarketTheme.CHIP));
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setPadding(dp(10), dp(10), dp(10), dp(10));
+        textureEngine.attachGlassControl(button);
+        return button;
     }
 
     private FrameLayout buildSettingsPage() {
         LinearLayout content = pageColumn();
+        Button back = compactButton("Back to chats", TEAL);
+        back.setOnClickListener(view -> showPage(Page.CHATS));
+        content.addView(back, narrowStart());
         TextView title = text("Settings", 28, INK, true);
         title.setAccessibilityHeading(true);
         content.addView(title, topMargin(dp(8)));
@@ -457,37 +504,42 @@ public final class MainActivity extends Activity {
     }
 
     private LinearLayout buildNavigation() {
-        LinearLayout nav = new LinearLayout(this);
-        nav.setOrientation(LinearLayout.HORIZONTAL);
-        nav.setGravity(Gravity.CENTER);
-        nav.setPadding(dp(7), dp(7), dp(7), dp(7));
-        nav.setBackground(TextureDrawableFactory.glassButton(this, dp(34), TEAL));
-        nav.setElevation(dp(12));
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.HORIZONTAL);
+        shell.setGravity(Gravity.CENTER);
+        shell.setPadding(dp(12), dp(8), dp(12), dp(8));
+        shell.setBackground(MothMarketTheme.roundRect(MothMarketTheme.NAV, 30f, this));
+        shell.setElevation(dp(8));
 
-        homeTab = navButton("Home", android.R.drawable.ic_menu_view, Page.HOME);
-        peopleTab = navButton("People", android.R.drawable.ic_menu_myplaces, Page.PEOPLE);
-        settingsTab = navButton("Settings", android.R.drawable.ic_menu_preferences, Page.SETTINGS);
-        nav.addView(homeTab, navItemParams());
-        nav.addView(peopleTab, navItemParams());
-        nav.addView(settingsTab, navItemParams());
-        return nav;
+        chatsTab = navTab("Chats", R.drawable.ic_chats, Page.CHATS, true);
+        flowsTab = navTab("Flows", R.drawable.moth_logo, Page.FLOWS, false);
+        shell.addView(chatsTab, navItemParams());
+        shell.addView(flowsTab, navItemParams());
+        return shell;
     }
 
-    private Button navButton(String label, int icon, Page page) {
-        Button button = new Button(this);
-        button.setText(label);
-        button.setTextSize(12);
-        button.setTextColor(INK);
-        button.setAllCaps(false);
-        button.setGravity(Gravity.CENTER);
-        button.setCompoundDrawablesWithIntrinsicBounds(0, icon, 0, 0);
-        button.setCompoundDrawablePadding(dp(2));
-        button.setPadding(dp(3), dp(3), dp(3), dp(3));
-        button.setMinHeight(dp(56));
-        button.setBackground(new ColorDrawable(TRANSPARENT));
-        button.setOnClickListener(view -> showPage(page));
-        textureEngine.attachGlassControl(button);
-        return button;
+    private LinearLayout navTab(String label, int icon, Page page, boolean selected) {
+        LinearLayout tab = new LinearLayout(this);
+        tab.setOrientation(LinearLayout.VERTICAL);
+        tab.setGravity(Gravity.CENTER);
+        tab.setPadding(dp(22), dp(10), dp(22), dp(8));
+        tab.setBackground(MothMarketTheme.navPill(this, selected));
+        tab.setClickable(true);
+        tab.setFocusable(true);
+        tab.setSelected(selected);
+        tab.setOnClickListener(view -> showPage(page));
+
+        ImageView iconView = new ImageView(this);
+        iconView.setImageResource(icon);
+        iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        iconView.setContentDescription(label);
+        tab.addView(iconView, new LinearLayout.LayoutParams(dp(30), dp(30)));
+
+        TextView caption = text(label, 12, selected ? INK : MUTED, selected);
+        caption.setGravity(Gravity.CENTER);
+        tab.addView(caption, topMargin(dp(4)));
+        textureEngine.attachGlassControl(tab);
+        return tab;
     }
 
     @Override
@@ -499,6 +551,20 @@ public final class MainActivity extends Activity {
         updateShakeLifecycle();
         mainHandler.removeCallbacks(surfaceRefresh);
         mainHandler.post(surfaceRefresh);
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        if (currentPage == Page.CHAT) {
+            closeConversation();
+            return;
+        }
+        if (currentPage == Page.SETTINGS || currentPage == Page.FLOWS) {
+            showPage(Page.CHATS);
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override
@@ -532,46 +598,53 @@ public final class MainActivity extends Activity {
 
     private void showPage(Page page) {
         currentPage = page;
-        homePage.setVisibility(page == Page.HOME ? View.VISIBLE : View.GONE);
-        peoplePage.setVisibility(page == Page.PEOPLE ? View.VISIBLE : View.GONE);
+        chatsPage.setVisibility(page == Page.CHATS ? View.VISIBLE : View.GONE);
+        chatThreadPage.setVisibility(page == Page.CHAT ? View.VISIBLE : View.GONE);
         settingsPage.setVisibility(page == Page.SETTINGS ? View.VISIBLE : View.GONE);
-        selectTab(homeTab, page == Page.HOME);
-        selectTab(peopleTab, page == Page.PEOPLE);
-        selectTab(settingsTab, page == Page.SETTINGS);
-        textureEngine.playBoundaryBump(page == Page.HOME ? homeTab
-                : page == Page.PEOPLE ? peopleTab : settingsTab);
+        flowsPage.setVisibility(page == Page.FLOWS ? View.VISIBLE : View.GONE);
+        selectNavTab(chatsTab, page == Page.CHATS || page == Page.CHAT);
+        selectNavTab(flowsTab, page == Page.FLOWS);
+        View bump = page == Page.FLOWS ? flowsTab : chatsTab;
+        textureEngine.playBoundaryBump(bump);
     }
 
-    private void selectTab(Button button, boolean selected) {
-        button.setTypeface(Typeface.DEFAULT, selected ? Typeface.BOLD : Typeface.NORMAL);
-        button.setTextColor(selected ? TEAL : INK);
-        button.setBackground(selected
-                ? TextureDrawableFactory.glassButton(this, dp(26), TEAL)
-                : new ColorDrawable(TRANSPARENT));
-        button.setSelected(selected);
+    private void selectNavTab(LinearLayout tab, boolean selected) {
+        tab.setSelected(selected);
+        tab.setBackground(MothMarketTheme.navPill(this, selected));
+        if (tab.getChildCount() > 1 && tab.getChildAt(1) instanceof TextView caption) {
+            caption.setTypeface(Typeface.DEFAULT, selected ? Typeface.BOLD : Typeface.NORMAL);
+            caption.setTextColor(selected ? INK : MUTED);
+        }
     }
 
     private void refreshNotificationReader() {
         boolean granted = hasNotificationAccess();
         notificationAccessButton.setText(granted ? "Review notification access" : "Enable notification access");
+        long now = System.currentTimeMillis();
+        ListenerHealthStore.Snapshot health = NotificationRuntime.get(this).health().read();
+        boolean live = TextureNotificationListenerService.hasLiveConnection();
+        notificationStatus.setText(
+                ListenerHealthPolicy.statusLabel(health, now, granted, live));
         if (!granted) {
-            notificationStatus.setText("Notification access is off");
             renderConnection(ConnectionState.DISCONNECTED, "Notification access required");
             clearAttention();
             return;
         }
 
         NotificationHealthJobService.schedule(this);
+        NotificationWatchdogScheduler.schedule(this);
         TextureNotificationListenerService.requestRebindNow(this);
         startCoreLink();
         requestNotificationPermissionIfNeeded();
         NotificationRuntime runtime = NotificationRuntime.get(this);
-        coreLinkButton.setText(ConnectionConfigStore.isConfigured(this, runtime.getDeviceId())
+        coreLinkButton.setText(ConnectionConfigStore.isStub(this, runtime.getDeviceId())
+                ? "Local only (Convex stubbed)"
+                : ConnectionConfigStore.isConfigured(this, runtime.getDeviceId())
                 ? "Reconnect Core" : "Configure Core");
-        ListenerHealthStore.Snapshot health = runtime.health().read();
-        notificationStatus.setText(health.connected
-                ? "Notification reader active"
-                : "Notification reader reconnecting");
+        if (ConnectionConfigStore.isStub(this, runtime.getDeviceId())) {
+            connectionStatus.setText("Local stub · Convex and VoiceOS offline");
+            sessionStatus.setText("On-device only");
+        }
         refreshLocalSurface();
     }
 
@@ -688,32 +761,44 @@ public final class MainActivity extends Activity {
         try {
             config = ConnectionConfigStore.load(
                     this, NotificationRuntime.get(this).getDeviceId());
-            String actionToken = ConnectionConfigStore.loadUserActionToken(this);
-            if (actionToken == null || actionToken.trim().isEmpty()) {
-                responseStatus.setText("Add the User action token in Settings to use phone buttons");
-                showPage(Page.SETTINGS);
-                return;
-            }
         } catch (RuntimeException missingConfig) {
-            responseStatus.setText("Connect TextureFlow Core in Settings first");
-            showPage(Page.SETTINGS);
-            return;
+            TextureFlowConnectionController.useLocalStub(this);
+            config = ConnectionConfigStore.load(
+                    this, NotificationRuntime.get(this).getDeviceId());
         }
 
         phoneActionBusy = true;
         setResponseActionsEnabled(false);
         responseStatus.setText("Preparing exact preview");
+        ConnectionConfig finalConfig = config;
         actionExecutor.execute(() -> {
             try {
-                CoreActionClient client = new CoreActionClient(
-                        config, ConnectionConfigStore.loadUserActionToken(this));
-                CoreActionClient.Proposal proposal = client.create(event, type, payload);
-                runOnUiThread(() -> renderPhoneProposal(event, proposal));
+                CoreActionClient.Proposal proposal;
+                if (finalConfig.isStub()) {
+                    if (localActionClient == null) {
+                        localActionClient = new LocalCoreActionClient(this, finalConfig);
+                    }
+                    proposal = localActionClient.create(event, type, payload);
+                } else {
+                    String actionToken = ConnectionConfigStore.loadUserActionToken(this);
+                    if (actionToken == null || actionToken.trim().isEmpty()) {
+                        runOnUiThread(() -> {
+                            finishPhoneActionFailure(
+                                    "Add the User action token in Settings to use live Core.");
+                            showPage(Page.SETTINGS);
+                        });
+                        return;
+                    }
+                    CoreActionClient client = new CoreActionClient(finalConfig, actionToken);
+                    proposal = client.create(event, type, payload);
+                }
+                CoreActionClient.Proposal ready = proposal;
+                runOnUiThread(() -> renderPhoneProposal(event, ready));
             } catch (Exception failure) {
                 String reason = failure.getMessage();
                 runOnUiThread(() -> finishPhoneActionFailure(reason == null
-                        ? "Core could not prepare that action."
-                        : "Core: " + reason));
+                        ? "Could not prepare that action."
+                        : reason));
             }
         });
     }
@@ -780,11 +865,13 @@ public final class MainActivity extends Activity {
     }
 
     private void renderPeople(List<StoredNotificationEvent> events) {
-        peopleList.removeAllViews();
         Map<String, PersonTimeline> people = new LinkedHashMap<>();
+        Set<String> liveIds = liveEventIds();
         for (StoredNotificationEvent event : events) {
+            if (!isConversationCandidate(event)) continue;
             String name = emptyFallback(event.getSenderName(), event.getConversationLabel());
             if (name == null || name.trim().isEmpty()) continue;
+            if ("unknown sender".equalsIgnoreCase(name.trim())) continue;
             String key = normalizePersonKey(name);
             PersonTimeline person = people.get(key);
             if (person == null) {
@@ -793,76 +880,254 @@ public final class MainActivity extends Activity {
             }
             person.events.add(event);
             person.apps.add(emptyFallback(event.getAppLabel(), event.getPackageName()));
-            person.latestAt = Math.max(person.latestAt, event.getUpdatedAt());
+            if (event.getUpdatedAt() >= person.latestAt) {
+                person.latestAt = event.getUpdatedAt();
+                person.latestPackage = event.getPackageName();
+                person.latestAppLabel = event.getAppLabel();
+                person.latestBody = emptyFallback(event.getBody(), "Notification");
+            }
+            if (liveIds.contains(event.getEventId())) {
+                person.unreadCount++;
+                if (event.getUpdatedAt() >= person.latestUnreadAt) {
+                    person.latestUnreadAt = event.getUpdatedAt();
+                    person.latestUnreadPackage = event.getPackageName();
+                    person.latestUnreadAppLabel = event.getAppLabel();
+                }
+            }
         }
         List<PersonTimeline> ordered = new ArrayList<>(people.values());
         ordered.sort((left, right) -> Long.compare(right.latestAt, left.latestAt));
         if (ordered.isEmpty()) {
-            peopleList.addView(peopleEmpty, matchWrap());
+            ordered.add(demoAlex());
+        }
+        cachedPeople.clear();
+        cachedPeople.addAll(ordered);
+        filterChatList(searchField == null ? "" : searchField.getText().toString());
+    }
+
+    private boolean isConversationCandidate(StoredNotificationEvent event) {
+        if (event.hasCapability("REPLY")) return true;
+        String hay = ((event.getPackageName() == null ? "" : event.getPackageName()) + " "
+                + (event.getAppLabel() == null ? "" : event.getAppLabel())).toLowerCase(Locale.US);
+        return hay.contains("whatsapp")
+                || hay.contains("telegram")
+                || hay.contains("signal")
+                || hay.contains("instagram")
+                || hay.contains("messenger")
+                || hay.contains("facebook.orca")
+                || hay.contains("sms")
+                || hay.contains("mms")
+                || hay.contains("messaging")
+                || hay.contains("imessage")
+                || hay.contains("discord")
+                || hay.contains("slack")
+                || hay.contains("viber")
+                || hay.contains("line");
+    }
+
+    private Set<String> liveEventIds() {
+        Set<String> ids = new LinkedHashSet<>();
+        for (StoredNotificationEvent event
+                : NotificationRuntime.get(this).notifications().getLiveEvents()) {
+            ids.add(event.getEventId());
+        }
+        return ids;
+    }
+
+    private PersonTimeline demoAlex() {
+        PersonTimeline alex = new PersonTimeline("Alex");
+        alex.latestAt = System.currentTimeMillis();
+        alex.latestBody = "😊 See you in 5 minutes";
+        alex.latestPackage = "com.whatsapp";
+        alex.latestAppLabel = "WhatsApp";
+        alex.latestUnreadPackage = "com.whatsapp";
+        alex.latestUnreadAppLabel = "WhatsApp";
+        alex.latestUnreadAt = alex.latestAt;
+        alex.unreadCount = 1;
+        alex.apps.add("WhatsApp");
+        alex.demo = true;
+        alex.demoMessages.add(new ChatBubble(false, "Hey — still good for later?", alex.latestAt - 12 * 60_000L));
+        alex.demoMessages.add(new ChatBubble(true, "Yes, heading over now.", alex.latestAt - 8 * 60_000L));
+        alex.demoMessages.add(new ChatBubble(false, "😊 See you in 5 minutes", alex.latestAt));
+        return alex;
+    }
+
+    private void filterChatList(String query) {
+        if (chatListContainer == null) return;
+        chatListContainer.removeAllViews();
+        String needle = query == null ? "" : query.trim().toLowerCase(Locale.US);
+        List<PersonTimeline> visible = new ArrayList<>();
+        for (PersonTimeline person : cachedPeople) {
+            if (needle.isEmpty()
+                    || person.name.toLowerCase(Locale.US).contains(needle)
+                    || person.latestBody.toLowerCase(Locale.US).contains(needle)
+                    || String.join(" ", person.apps).toLowerCase(Locale.US).contains(needle)) {
+                visible.add(person);
+            }
+        }
+        if (visible.isEmpty()) {
+            chatsEmpty.setText(needle.isEmpty() ? "No conversations yet." : "No matches.");
+            chatListContainer.addView(chatsEmpty, matchWrap());
+            chatsEmpty.setVisibility(View.VISIBLE);
             return;
         }
-        for (PersonTimeline person : ordered) {
-            peopleList.addView(personRow(person), wideWithBottom(dp(9)));
+        chatsEmpty.setVisibility(View.GONE);
+        // Keep empty slots aligned with the card body (avatar only peeks past the left edge).
+        final int avatarOverhang = dp(8);
+        for (PersonTimeline person : visible) {
+            LinearLayout.LayoutParams rowParams = wideWithBottom(dp(14));
+            chatListContainer.addView(personRow(person), rowParams);
+        }
+        int placeholders = Math.max(0, 5 - visible.size());
+        for (int i = 0; i < placeholders; i++) {
+            View slot = new View(this);
+            slot.setBackground(MothMarketTheme.placeholderSlot(this));
+            slot.setAlpha(0.72f);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(76));
+            params.setMargins(avatarOverhang, 0, 0, dp(14));
+            chatListContainer.addView(slot, params);
         }
     }
 
     private View personRow(PersonTimeline person) {
-        LinearLayout row = surface(dp(26));
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.setContentDescription(person.name + ", " + String.join(", ", person.apps));
-        row.setOnClickListener(view -> openConversation(person));
-        textureEngine.attachGlassControl(row);
+        final int avatarSize = dp(56);
+        // Card stretches under most of the avatar; only a small slice peeks past the left edge.
+        final int overhang = dp(8);
 
-        TextView initial = text(person.name.substring(0, 1).toUpperCase(Locale.getDefault()), 20, TEAL, true);
-        initial.setGravity(Gravity.CENTER);
-        initial.setBackground(TextureDrawableFactory.glassButton(this, dp(24), TEAL));
-        row.addView(initial, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        FrameLayout shell = new FrameLayout(this);
+        shell.setClipChildren(false);
+        shell.setClipToPadding(false);
+        shell.setPadding(0, dp(4), 0, dp(4));
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        // Space inside the card for the avatar overlap + gap before the name.
+        card.setPadding(avatarSize - overhang + dp(10), dp(14), dp(14), dp(14));
+        card.setClickable(true);
+        card.setFocusable(true);
+        card.setContentDescription(person.name + ", " + person.latestBody);
+        card.setOnClickListener(view -> openConversation(person));
+        textureEngine.attachGlassControl(card);
+
+        String glowPackage = person.unreadCount > 0
+                ? (person.latestUnreadPackage == null || person.latestUnreadPackage.isEmpty()
+                    ? person.latestPackage : person.latestUnreadPackage)
+                : null;
+        String glowLabel = person.unreadCount > 0
+                ? (person.latestUnreadAppLabel == null || person.latestUnreadAppLabel.isEmpty()
+                    ? person.latestAppLabel : person.latestUnreadAppLabel)
+                : null;
+        if (glowPackage != null) {
+            MothMarketTheme.applyGlow(card, this,
+                    MothMarketTheme.glowForPackage(glowPackage, glowLabel));
+        } else {
+            card.setBackground(MothMarketTheme.quietCard(this));
+            card.setElevation(dp(2));
+        }
 
         LinearLayout labels = new LinearLayout(this);
         labels.setOrientation(LinearLayout.VERTICAL);
         TextView name = text(person.name, 18, INK, true);
         labels.addView(name);
-        TextView apps = text(String.join(" · ", person.apps), 13, MUTED, false);
-        apps.setSingleLine(true);
-        apps.setEllipsize(TextUtils.TruncateAt.END);
-        labels.addView(apps, topMargin(dp(3)));
+        TextView snippet = text(person.latestBody, 14, INK, false);
+        snippet.setSingleLine(true);
+        snippet.setEllipsize(TextUtils.TruncateAt.END);
+        labels.addView(snippet, topMargin(dp(4)));
         LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        labelParams.setMargins(dp(14), 0, dp(6), 0);
-        row.addView(labels, labelParams);
-        TextView chevron = text("›", 30, MUTED, false);
-        chevron.setContentDescription("Open conversation");
-        row.addView(chevron);
-        return row;
+        labelParams.setMargins(0, 0, dp(10), 0);
+        card.addView(labels, labelParams);
+
+        LinearLayout trailing = new LinearLayout(this);
+        trailing.setOrientation(LinearLayout.VERTICAL);
+        trailing.setGravity(Gravity.END);
+        TextView time = text(clockTime(person.latestAt), 12, INK, false);
+        time.setSingleLine(true);
+        time.setGravity(Gravity.CENTER);
+        time.setPadding(dp(10), dp(5), dp(10), dp(5));
+        time.setBackground(MothMarketTheme.roundRect(MothMarketTheme.CHIP, 14f, this));
+        trailing.addView(time, new LinearLayout.LayoutParams(-2, -2));
+        if (person.unreadCount > 0) {
+            TextView badge = text(String.valueOf(Math.min(person.unreadCount, 99)), 12, INK, true);
+            badge.setGravity(Gravity.CENTER);
+            badge.setBackground(MothMarketTheme.circle(MothMarketTheme.CHIP));
+            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(22), dp(22));
+            badgeParams.setMargins(0, dp(8), 0, 0);
+            badgeParams.gravity = Gravity.END;
+            trailing.addView(badge, badgeParams);
+        }
+        card.addView(trailing, new LinearLayout.LayoutParams(-2, -2));
+
+        FrameLayout.LayoutParams cardParams = new FrameLayout.LayoutParams(-1, -2);
+        cardParams.setMargins(overhang, 0, 0, 0);
+        cardParams.gravity = Gravity.CENTER_VERTICAL;
+        shell.addView(card, cardParams);
+
+        ImageView avatar = new ImageView(this);
+        avatar.setImageResource(R.drawable.ic_person_avatar);
+        avatar.setContentDescription(person.name + " photo");
+        avatar.setElevation(dp(6));
+        FrameLayout.LayoutParams avatarParams = new FrameLayout.LayoutParams(avatarSize, avatarSize);
+        avatarParams.gravity = Gravity.START | Gravity.CENTER_VERTICAL;
+        shell.addView(avatar, avatarParams);
+
+        return shell;
     }
 
     private void openConversation(PersonTimeline person) {
-        peopleList.setVisibility(View.GONE);
-        conversationView.setVisibility(View.VISIBLE);
+        activeConversationKey = normalizePersonKey(person.name);
         conversationTitle.setText(person.name);
         conversationMessages.removeAllViews();
-        List<StoredNotificationEvent> events = new ArrayList<>(person.events);
-        events.sort(Comparator.comparingLong(StoredNotificationEvent::getUpdatedAt));
-        for (StoredNotificationEvent event : events) {
-            LinearLayout bubble = surface(dp(24));
-            TextView meta = text(emptyFallback(event.getAppLabel(), event.getPackageName())
-                    + " · " + shortTime(event.getUpdatedAt()), 12, MUTED, true);
-            bubble.addView(meta);
-            TextView body = text(emptyFallback(event.getBody(), "Notification content unavailable"),
-                    17, INK, false);
-            body.setLineSpacing(dp(2), 1f);
-            bubble.addView(body, topMargin(dp(7)));
-            conversationMessages.addView(bubble, wideWithBottom(dp(9)));
+        if (person.demo) {
+            for (ChatBubble bubble : person.demoMessages) {
+                conversationMessages.addView(messageBubble(bubble.outbound, bubble.body, bubble.at),
+                        wideWithBottom(dp(8)));
+            }
+        } else {
+            List<StoredNotificationEvent> events = new ArrayList<>(person.events);
+            events.sort(Comparator.comparingLong(StoredNotificationEvent::getUpdatedAt));
+            for (StoredNotificationEvent event : events) {
+                String body = emptyFallback(event.getBody(), "Notification content unavailable");
+                conversationMessages.addView(
+                        messageBubble(false, body, event.getUpdatedAt()),
+                        wideWithBottom(dp(8)));
+            }
         }
-        textureEngine.playBoundaryBump(conversationView);
+        showPage(Page.CHAT);
+        textureEngine.playBoundaryBump(conversationMessages);
+    }
+
+    private View messageBubble(boolean outbound, String body, long at) {
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        wrap.setGravity(outbound ? Gravity.END : Gravity.START);
+
+        LinearLayout bubble = new LinearLayout(this);
+        bubble.setOrientation(LinearLayout.VERTICAL);
+        bubble.setPadding(dp(12), dp(10), dp(12), dp(8));
+        bubble.setBackground(MothMarketTheme.roundRect(
+                outbound ? MothMarketTheme.BUBBLE_OUT : MothMarketTheme.BUBBLE_IN, 18f, this));
+        bubble.setElevation(dp(1));
+        TextView bodyView = text(body, 16, INK, false);
+        bodyView.setLineSpacing(dp(2), 1f);
+        bubble.addView(bodyView);
+        TextView meta = text(clockTime(at), 11, MUTED, false);
+        meta.setGravity(outbound ? Gravity.END : Gravity.START);
+        bubble.addView(meta, topMargin(dp(4)));
+
+        LinearLayout.LayoutParams bubbleParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        bubbleParams.gravity = outbound ? Gravity.END : Gravity.START;
+        bubbleParams.setMargins(outbound ? dp(48) : 0, 0, outbound ? 0 : dp(48), 0);
+        wrap.addView(bubble, bubbleParams);
+        return wrap;
     }
 
     private void closeConversation() {
-        conversationView.setVisibility(View.GONE);
-        peopleList.setVisibility(View.VISIBLE);
-        textureEngine.playBoundaryBump(peopleList);
+        activeConversationKey = null;
+        showPage(Page.CHATS);
+        textureEngine.playBoundaryBump(chatListContainer);
     }
 
     private void initializeVoice() {
@@ -944,7 +1209,7 @@ public final class MainActivity extends Activity {
             message = "Urgent from " + emptyFallback(urgent.getSenderName(), "someone")
                     + " on " + emptyFallback(urgent.getAppLabel(), "your phone") + ". "
                     + emptyFallback(urgent.getBody(), "Open TextureFlow for details.");
-            showPage(Page.HOME);
+            showPage(Page.CHATS);
             textureEngine.emit(TextureCue.ATTENTION_URGENT, urgent.getEventId(), attentionPanel);
         }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
@@ -1089,10 +1354,17 @@ public final class MainActivity extends Activity {
 
     private void startCoreLink() {
         NotificationRuntime runtime = NotificationRuntime.get(this);
-        if (coreStartIssued || !ConnectionConfigStore.isConfigured(this, runtime.getDeviceId())) return;
+        if (coreStartIssued) return;
+        if (!ConnectionConfigStore.isConfigured(this, runtime.getDeviceId())
+                || ConnectionConfigStore.isStub(this, runtime.getDeviceId())) {
+            TextureFlowConnectionController.useLocalStub(this);
+        }
         try {
             TextureFlowConnectionController.start(this);
             coreStartIssued = true;
+            if (ConnectionConfigStore.isStub(this, runtime.getDeviceId())) {
+                renderConnection(ConnectionState.CONNECTED, "Local stub · no Convex / VoiceOS");
+            }
         } catch (RuntimeException unavailable) {
             coreStartIssued = false;
             renderConnection(ConnectionState.STALE, "Core link will retry");
@@ -1104,56 +1376,26 @@ public final class MainActivity extends Activity {
     }
 
     private void openCoreSetup(View ignored) {
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(22), dp(6), dp(22), 0);
-
-        EditText url = setupField("Convex deployment URL", BuildConfig.CONVEX_URL,
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        form.addView(url, matchWrap());
-        EditText owner = setupField("Owner ID", BuildConfig.TEXTUREFLOW_OWNER_ID,
-                InputType.TYPE_CLASS_TEXT);
-        form.addView(owner, matchWrap());
-        EditText token = setupField("Device enrollment token", "",
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        form.addView(token, matchWrap());
-        EditText userToken = setupField("User action token", "",
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        form.addView(userToken, matchWrap());
-
+        boolean stubbed = ConnectionConfigStore.isStub(
+                this, NotificationRuntime.get(this).getDeviceId());
         new AlertDialog.Builder(this)
-                .setTitle("Connect TextureFlow Core")
-                .setView(form)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Connect", (dialog, which) -> {
-                    try {
-                        String deviceToken = token.getText().toString();
-                        String actionToken = userToken.getText().toString();
-                        String oidcToken = null;
-                        try {
-                            ConnectionConfig existing = ConnectionConfigStore.load(
-                                    this, NotificationRuntime.get(this).getDeviceId());
-                            if (deviceToken.trim().isEmpty()) deviceToken = existing.deviceActorToken();
-                            oidcToken = existing.oidcToken();
-                            if (actionToken.trim().isEmpty()) {
-                                actionToken = ConnectionConfigStore.loadUserActionToken(this);
-                            }
-                        } catch (RuntimeException noExistingConfiguration) {
-                            // Both credentials are required on first setup.
-                        }
-                        TextureFlowConnectionController.configure(this,
-                                url.getText().toString().trim(),
-                                owner.getText().toString().trim(),
-                                deviceToken, oidcToken, "TextureFlow Android");
-                        ConnectionConfigStore.saveUserActionToken(this, actionToken);
-                        TextureFlowConnectionController.stop(this);
-                        coreStartIssued = false;
-                        mainHandler.postDelayed(this::startCoreLink, 250L);
-                        renderConnection(ConnectionState.CONNECTING, "Core link starting");
-                    } catch (RuntimeException invalid) {
-                        renderConnection(ConnectionState.STALE, "Core configuration is incomplete");
-                    }
-                })
+                .setTitle(stubbed ? "Local mode" : "TextureFlow Core")
+                .setMessage(stubbed
+                        ? "Convex and VoiceOS are stubbed. The phone runs on-device only "
+                        + "(notifications, bank, Moth Market UI). You can delete those "
+                        + "integrations later; this mode is the default now."
+                        : "Live Convex is configured. Prefer local stub unless you are "
+                        + "actively restoring cloud sync.")
+                .setPositiveButton(stubbed ? "Keep local stub" : "Switch to local stub",
+                        (dialog, which) -> {
+                            TextureFlowConnectionController.stop(this);
+                            coreStartIssued = false;
+                            TextureFlowConnectionController.useLocalStub(this);
+                            mainHandler.postDelayed(this::startCoreLink, 250L);
+                            renderConnection(ConnectionState.CONNECTED,
+                                    "Local stub · no Convex / VoiceOS");
+                        })
+                .setNegativeButton("Close", null)
                 .show();
     }
 
@@ -1177,10 +1419,16 @@ public final class MainActivity extends Activity {
 
     private void refreshCoreStatus() {
         if (!hasNotificationAccess()) return;
+        long now = System.currentTimeMillis();
+        ListenerHealthStore.Snapshot health = NotificationRuntime.get(this).health().read();
+        boolean live = TextureNotificationListenerService.hasLiveConnection();
+        boolean readerOk = ListenerHealthPolicy.isFresh(health, now) && live;
+
         ConnectionStatusStore.Snapshot status = ConnectionStatusStore.read(this);
-        long age = System.currentTimeMillis() - status.lastOnlineAtMillis();
+        long age = now - status.lastOnlineAtMillis();
         if ("ONLINE".equals(status.state()) && age >= 0L && age <= 45_000L) {
-            renderConnection(ConnectionState.CONNECTED, "Core and reader active");
+            renderConnection(ConnectionState.CONNECTED,
+                    readerOk ? "Core and reader active" : "Core online · reader reconnecting");
         } else if ("STARTING".equals(status.state()) || "REGISTERING".equals(status.state())) {
             renderConnection(ConnectionState.CONNECTING, status.detail());
         } else if ("BACKING_OFF".equals(status.state()) || "DEGRADED".equals(status.state())
@@ -1188,12 +1436,15 @@ public final class MainActivity extends Activity {
             renderConnection(ConnectionState.STALE, "Core link recovering");
             if (!coreStartIssued) startCoreLink();
         }
-        ListenerHealthStore.Snapshot health = NotificationRuntime.get(this).health().read();
-        if (!health.connected) {
-            notificationStatus.setText("Notification reader reconnecting");
-            TextureNotificationListenerService.requestHealthReconciliation(this);
-        } else {
-            notificationStatus.setText("Notification reader active");
+        notificationStatus.setText(
+                ListenerHealthPolicy.statusLabel(health, now, true, live));
+        if (!readerOk) {
+            // Reconcile alone cannot heal a live-flag zombie; escalate when policy says locked out.
+            if (ListenerHealthPolicy.needsForceRestart(health, now, live)) {
+                TextureNotificationListenerService.forceStaleRebind(this);
+            } else {
+                TextureNotificationListenerService.requestHealthReconciliation(this);
+            }
         }
     }
 
@@ -1266,14 +1517,15 @@ public final class MainActivity extends Activity {
             attentionPanel.setBackground(urgent
                     ? TextureDrawableFactory.emphasizedPanel(this, dp(30), AMBER)
                     : TextureDrawableFactory.quietPanel(this, dp(30)));
-            attentionPanel.setVisibility(View.VISIBLE);
+            // Keep legacy attention chrome hidden on the Moth Market chat list.
+            attentionPanel.setVisibility(View.GONE);
             responseSmile.setVisibility(View.GONE);
             responseTitle.setVisibility(View.VISIBLE);
             responseEditor.setVisibility(View.VISIBLE);
             responseOptions.setVisibility(View.VISIBLE);
             sessionStatus.setText(urgent ? "Urgent item present" : "Important item present");
             if (urgent) textureEngine.emit(TextureCue.ATTENTION_URGENT,
-                    safeId(eventId, "event"), attentionPanel);
+                    safeId(eventId, "event"), chatsPage);
         });
     }
 
@@ -1315,7 +1567,7 @@ public final class MainActivity extends Activity {
             confirmButton.setEnabled(true);
             cancelButton.setEnabled(true);
             eyeView.setState(EyeOfHorusView.State.PROPOSAL);
-            showPage(Page.HOME);
+            // Proposal chrome stays on the hidden legacy panel until chat actions land.
             textureEngine.emit(TextureCue.PROPOSAL_READY, safeId(proposalId, "proposal"), responsePanel);
         });
     }
@@ -1386,7 +1638,7 @@ public final class MainActivity extends Activity {
             return;
         }
         if (currentProposalId == null || actionRequestListener == null) {
-            responseStatus.setText("VoiceOS confirmation link unavailable");
+            responseStatus.setText("No pending proposal to confirm");
             responseStatus.setVisibility(View.VISIBLE);
             return;
         }
@@ -1402,7 +1654,7 @@ public final class MainActivity extends Activity {
             return;
         }
         if (currentProposalId == null || actionRequestListener == null) {
-            responseStatus.setText("VoiceOS cancellation link unavailable");
+            responseStatus.setText("No pending proposal to cancel");
             responseStatus.setVisibility(View.VISIBLE);
             return;
         }
@@ -1422,16 +1674,42 @@ public final class MainActivity extends Activity {
         try {
             config = ConnectionConfigStore.load(this, NotificationRuntime.get(this).getDeviceId());
         } catch (RuntimeException missing) {
-            finishPhoneActionFailure("Core configuration is unavailable.");
+            finishPhoneActionFailure("Local configuration is unavailable.");
             return;
         }
         phoneActionBusy = true;
         confirmButton.setEnabled(false);
         cancelButton.setEnabled(false);
+        ConnectionConfig finalConfig = config;
         actionExecutor.execute(() -> {
             try {
+                if (finalConfig.isStub()) {
+                    if (localActionClient == null) {
+                        localActionClient = new LocalCoreActionClient(this, finalConfig);
+                    }
+                    CoreActionClient.Proposal working = proposal;
+                    if (proposal.actionType() == ActionType.REPLY
+                            && !latestReply.equals(proposal.replyMessage())) {
+                        CoreActionClient.Proposal revised =
+                                localActionClient.reviseReply(proposal, event, latestReply);
+                        runOnUiThread(() -> {
+                            renderPhoneProposal(event, revised);
+                            responseStatus.setText("Reply changed. Confirm the revised exact preview: "
+                                    + revised.spokenPreview());
+                        });
+                        return;
+                    }
+                    final CoreActionClient.Proposal toConfirm = working;
+                    runOnUiThread(() -> renderExecution(toConfirm.proposalId(),
+                            "Executing on-device (stub)"));
+                    CoreActionClient.Confirmation confirmation = localActionClient.confirm(toConfirm);
+                    CoreActionClient.Receipt receipt = confirmation.receipt();
+                    runOnUiThread(() -> finishPhoneConfirmation(toConfirm, event, receipt));
+                    return;
+                }
+
                 CoreActionClient client = new CoreActionClient(
-                        config, ConnectionConfigStore.loadUserActionToken(this));
+                        finalConfig, ConnectionConfigStore.loadUserActionToken(this));
                 if (proposal.actionType() == ActionType.REPLY) {
                     if (!latestReply.equals(proposal.replyMessage())) {
                         CoreActionClient.Proposal revised =
@@ -1453,7 +1731,7 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> finishPhoneConfirmation(proposal, event, receipt));
             } catch (Exception failure) {
                 runOnUiThread(() -> finishPhoneActionFailure(
-                        "Core did not confirm that action. It remains unsent."));
+                        "Action was not confirmed. It remains unsent."));
             }
         });
     }
@@ -1501,7 +1779,7 @@ public final class MainActivity extends Activity {
         try {
             config = ConnectionConfigStore.load(this, NotificationRuntime.get(this).getDeviceId());
         } catch (RuntimeException missing) {
-            finishPhoneActionFailure("Core configuration is unavailable.");
+            finishPhoneActionFailure("Local configuration is unavailable.");
             return;
         }
         phoneActionBusy = true;
@@ -1509,8 +1787,12 @@ public final class MainActivity extends Activity {
         cancelButton.setEnabled(false);
         actionExecutor.execute(() -> {
             try {
-                new CoreActionClient(config, ConnectionConfigStore.loadUserActionToken(this))
-                        .cancel(proposal);
+                if (config.isStub()) {
+                    if (localActionClient != null) localActionClient.cancel(proposal);
+                } else {
+                    new CoreActionClient(config, ConnectionConfigStore.loadUserActionToken(this))
+                            .cancel(proposal);
+                }
                 runOnUiThread(() -> {
                     phoneActionBusy = false;
                     activePhoneProposal = null;
@@ -1523,7 +1805,7 @@ public final class MainActivity extends Activity {
                 });
             } catch (Exception failure) {
                 runOnUiThread(() -> finishPhoneActionFailure(
-                        "Core could not cancel the proposal yet."));
+                        "Could not cancel the proposal yet."));
             }
         });
     }
@@ -1611,10 +1893,12 @@ public final class MainActivity extends Activity {
 
     private FrameLayout scrollPage(LinearLayout content) {
         FrameLayout frame = new FrameLayout(this);
+        frame.setClipChildren(false);
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
-        scroll.setPadding(dp(20), dp(16), dp(20), dp(28));
+        scroll.setClipChildren(false);
+        scroll.setPadding(dp(4), dp(4), dp(4), dp(20));
         scroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
         textureEngine.attachScrollTexture(scroll, backgroundView::setScrollOffset);
         scroll.addView(content, new ScrollView.LayoutParams(-1, -2));
@@ -1771,11 +2055,37 @@ public final class MainActivity extends Activity {
                 .format(new Date(millis));
     }
 
+    private static String clockTime(long millis) {
+        // Always show a complete wall-clock time, e.g. "4:55 PM".
+        return new SimpleDateFormat("h:mm a", Locale.getDefault()).format(new Date(millis));
+    }
+
+    private static final class ChatBubble {
+        final boolean outbound;
+        final String body;
+        final long at;
+
+        ChatBubble(boolean outbound, String body, long at) {
+            this.outbound = outbound;
+            this.body = body;
+            this.at = at;
+        }
+    }
+
     private static final class PersonTimeline {
         final String name;
         final Set<String> apps = new LinkedHashSet<>();
         final List<StoredNotificationEvent> events = new ArrayList<>();
+        final List<ChatBubble> demoMessages = new ArrayList<>();
         long latestAt;
+        long latestUnreadAt;
+        String latestBody = "";
+        String latestPackage = "";
+        String latestAppLabel = "";
+        String latestUnreadPackage = "";
+        String latestUnreadAppLabel = "";
+        int unreadCount;
+        boolean demo;
 
         PersonTimeline(String name) { this.name = name; }
     }

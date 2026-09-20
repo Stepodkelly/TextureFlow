@@ -6,6 +6,10 @@ import android.app.job.JobScheduler;
 import android.app.job.JobService;
 import android.content.ComponentName;
 import android.content.Context;
+import android.provider.Settings;
+import android.text.TextUtils;
+
+import com.textureflow.data.ListenerHealthStore;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,11 +34,40 @@ public final class NotificationHealthJobService extends JobService {
         }
     }
 
+    static boolean hasNotificationAccess(Context context) {
+        String enabled = Settings.Secure.getString(
+                context.getContentResolver(), "enabled_notification_listeners");
+        if (enabled == null || enabled.isEmpty()) return false;
+        ComponentName expected = new ComponentName(
+                context, TextureNotificationListenerService.class);
+        TextUtils.SimpleStringSplitter splitter = new TextUtils.SimpleStringSplitter(':');
+        splitter.setString(enabled);
+        while (splitter.hasNext()) {
+            ComponentName candidate = ComponentName.unflattenFromString(splitter.next());
+            if (expected.equals(candidate)) return true;
+        }
+        return false;
+    }
+
     @Override
     public boolean onStartJob(JobParameters params) {
         EXECUTOR.execute(() -> {
             try {
-                TextureNotificationListenerService.requestHealthReconciliation(getApplicationContext());
+                Context application = getApplicationContext();
+                long now = System.currentTimeMillis();
+                if (!hasNotificationAccess(application)) {
+                    NotificationRuntime.get(application).health()
+                            .markStale(now, "notification access revoked");
+                    return;
+                }
+                ListenerHealthStore.Snapshot health =
+                        NotificationRuntime.get(application).health().read();
+                boolean live = TextureNotificationListenerService.hasLiveConnection();
+                if (ListenerHealthPolicy.needsForceRestart(health, now, live)) {
+                    TextureNotificationListenerService.forceStaleRebind(application);
+                } else {
+                    TextureNotificationListenerService.requestHealthReconciliation(application);
+                }
             } finally {
                 jobFinished(params, false);
             }

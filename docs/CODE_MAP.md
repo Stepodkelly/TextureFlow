@@ -2,24 +2,37 @@
 
 Use this when you know **what you want to change** but not **which file**.
 
-## Phone app (`app/`)
+## Phone app (`app/src/main/java/com/textureflow/`)
+
+Packages are one job each. Prefer the package `README.md` for a file list.
 
 | I want to… | Look here |
 |------------|-----------|
-| Change the main screen / eye / reply panel | `app/.../ui/MainActivity.java` |
-| Change voice listening / speaking | `app/.../ui/ConversationalVoiceController.java` |
-| Parse “reply with …” voice phrases | `app/.../ui/VoiceCommandParser.java` |
-| Read notifications from WhatsApp/Telegram/etc. | `app/.../notifications/TextureNotificationListenerService.java` |
-| Turn raw Android notifications into clean events | `app/.../notifications/NotificationNormalizer.java` |
-| Decide if reply/snooze is allowed | `app/.../policy/CommandPolicy.java` |
-| Actually send a reply / snooze / dismiss | `app/.../actions/NotificationActionExecutor.java` |
-| Keep live Reply buttons in memory | `app/.../actions/LiveActionRegistry.java` |
-| Connect to Convex / sync outbox | `app/.../connection/` |
-| Store events on the phone | `app/.../data/` |
-| Play haptic / audio cues | `app/.../texture/` |
-| Future: keep a snoozed “bank” to start chats | `app/.../bank/` (planned) |
+| Change the Moth Market chat UI / settings | `ui/MainActivity.java`, `ui/MothMarketTheme.java` |
+| Change voice listening / speaking | `ui/ConversationalVoiceController.java` |
+| Parse “reply with …” voice phrases | `ui/VoiceCommandParser.java` |
+| Capture notifications from other apps | `notifications/TextureNotificationListenerService.java` |
+| Harden / recover a locked-out listener | `notifications/ListenerHealthPolicy.java`, watchdog + health job |
+| Turn raw Android notifications into events | `notifications/NotificationNormalizer.java` |
+| Keep a snoozed replyable “bank” per peer × app | `bank/NotificationBank.java` (see `bank/README.md`) |
+| Queue local outbound texts until REPLY is live | `bank/OutboundMessageOutbox.java` |
+| Decide if reply/snooze is allowed | `policy/CommandPolicy.java` |
+| Actually send a reply / snooze / dismiss | `actions/NotificationActionExecutor.java` |
+| Keep live Reply buttons in memory | `actions/LiveActionRegistry.java` |
+| Local-only Core (stubbed Convex) | `connection/` — start at `ConnectionMode.java` |
+| Live Convex sync (optional, not default) | `connection/ConvexHttpGateway.java` |
+| Store events / health on the phone | `data/` |
+| Play haptic / audio cues | `texture/` |
 
-## Cloud (`convex/`)
+### Suggested read order inside `app/`
+
+```text
+ui/  →  notifications/  →  bank/  →  actions/  →  data/  →  connection/
+```
+
+Tests mirror the same packages under `app/src/test/java/com/textureflow/`.
+
+## Cloud (`convex/`) — stubbed / optional
 
 | I want to… | Look here |
 |------------|-----------|
@@ -32,7 +45,7 @@ Use this when you know **what you want to change** but not **which file**.
 | Proof the phone did it | `convex/receipts.ts` |
 | Shared server helpers | `convex/lib/` |
 
-## Voice bridge (`texture-bridge/`)
+## Voice bridge (`texture-bridge/`) — fixture stub
 
 | I want to… | Look here |
 |------------|-----------|
@@ -61,7 +74,7 @@ Use this when you know **what you want to change** but not **which file**.
 | Doc | Topic |
 |-----|--------|
 | [`START_HERE.md`](../START_HERE.md) | Beginner map of the whole repo |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Full system design |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Full system design (some Convex/VoiceOS sections are historical) |
 | [`ANDROID_INTEGRATION.md`](ANDROID_INTEGRATION.md) | Notification listener details |
 | [`ANDROID_CONNECTION.md`](ANDROID_CONNECTION.md) | Phone ↔ Convex connection |
 | [`THREAT_MODEL.md`](THREAT_MODEL.md) | Security threats |

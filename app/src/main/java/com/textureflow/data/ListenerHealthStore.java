@@ -1,6 +1,7 @@
 package com.textureflow.data;
 
 import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
 
 public final class ListenerHealthStore {
     public static final class Snapshot {
@@ -12,7 +13,7 @@ public final class ListenerHealthStore {
         public final int consecutiveFailures;
         public final String lastError;
 
-        Snapshot(boolean connected, long lastConnectedAt, long lastCallbackAt, long lastReconciledAt,
+        public Snapshot(boolean connected, long lastConnectedAt, long lastCallbackAt, long lastReconciledAt,
                  int lastActiveCount, int consecutiveFailures, String lastError) {
             this.connected = connected;
             this.lastConnectedAt = lastConnectedAt;
@@ -31,15 +32,26 @@ public final class ListenerHealthStore {
     }
 
     public void connected(long now) {
+        // Reset last_callback_at so post-connect grace is real; do not inherit markStale/disconnect times.
         database.getWritableDatabase().execSQL(
-                "UPDATE listener_health SET connected = 1, last_connected_at = ?, consecutive_failures = 0, "
-                        + "last_error = NULL WHERE singleton_id = 1", new Object[] {now});
+                "UPDATE listener_health SET connected = 1, last_connected_at = ?, last_callback_at = 0, "
+                        + "consecutive_failures = 0, last_error = NULL WHERE singleton_id = 1",
+                new Object[] {now});
     }
 
     public void disconnected(long now, String reason) {
+        // Never touch last_callback_at — that column is only for real posted/removed callbacks.
         database.getWritableDatabase().execSQL(
-                "UPDATE listener_health SET connected = 0, last_callback_at = ?, last_error = ? "
-                        + "WHERE singleton_id = 1", new Object[] {now, truncate(reason)});
+                "UPDATE listener_health SET connected = 0, last_error = ? "
+                        + "WHERE singleton_id = 1", new Object[] {truncate(reason)});
+    }
+
+    /** Clears the sticky connected flag when an external freshness watchdog proves the listener dead. */
+    public void markStale(long now, String reason) {
+        // Must not forge last_callback_at; that would make zombie health look fresh after force.
+        database.getWritableDatabase().execSQL(
+                "UPDATE listener_health SET connected = 0, last_error = ? "
+                        + "WHERE singleton_id = 1", new Object[] {truncate(reason)});
     }
 
     public void callback(long now) {
@@ -55,10 +67,14 @@ public final class ListenerHealthStore {
     }
 
     public void failed(long now, Throwable error) {
-        database.getWritableDatabase().execSQL(
+        SQLiteDatabase db = database.getWritableDatabase();
+        // Failures are not callbacks — forging last_callback_at hides zombie lockouts.
+        db.execSQL(
                 "UPDATE listener_health SET consecutive_failures = consecutive_failures + 1, "
-                        + "last_callback_at = ?, last_error = ? WHERE singleton_id = 1",
-                new Object[] {now, truncate(error == null ? "unknown failure" : error.toString())});
+                        + "last_error = ? WHERE singleton_id = 1",
+                new Object[] {truncate(error == null ? "unknown failure" : error.toString())});
+        db.execSQL(
+                "UPDATE listener_health SET connected = 0 WHERE singleton_id = 1 AND consecutive_failures >= 3");
     }
 
     public Snapshot read() {

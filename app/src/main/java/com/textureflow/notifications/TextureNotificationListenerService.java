@@ -14,7 +14,10 @@ import com.textureflow.actions.ActionReceipt;
 import com.textureflow.actions.ConfirmedProposal;
 import com.textureflow.actions.LiveActionRegistry;
 import com.textureflow.actions.NotificationControl;
+import com.textureflow.bank.BankEntry;
+import com.textureflow.bank.BankKey;
 import com.textureflow.data.EventWriteResult;
+import com.textureflow.data.ListenerHealthStore;
 import com.textureflow.data.StoredNotificationEvent;
 import com.textureflow.policy.NotificationIngestionPolicy;
 
@@ -29,11 +32,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class TextureNotificationListenerService extends NotificationListenerService
         implements NotificationControl {
     private static final long CALLBACK_RECONCILE_DELAY_MS = 2_000L;
-    private static final long SELF_HEALTH_INTERVAL_MS = 10_000L;
+    private static final long SELF_HEALTH_INTERVAL_MS = 6_000L;
     private static final Handler REBIND_HANDLER = new Handler(Looper.getMainLooper());
     private static final Object REBIND_LOCK = new Object();
     private static final AtomicInteger REBIND_ATTEMPTS = new AtomicInteger();
-    private static final long FORCE_REBIND_COOLDOWN_MS = 30_000L;
+    private static final long FORCE_REBIND_COOLDOWN_MS = 12_000L;
     private static volatile long lastForcedRebindAt;
     private static volatile WeakReference<TextureNotificationListenerService> activeService =
             new WeakReference<>(null);
@@ -66,7 +69,13 @@ public final class TextureNotificationListenerService extends NotificationListen
         workerThread.start();
         worker = new Handler(workerThread.getLooper());
         activeService = new WeakReference<>(this);
+        ListenerHealthStore.Snapshot health = runtime.health().read();
+        if (health.connected && !listenerConnected.get()) {
+            runtime.health().markStale(
+                    System.currentTimeMillis(), "service created with sticky connected flag");
+        }
         NotificationHealthJobService.schedule(this);
+        NotificationWatchdogScheduler.schedule(this);
     }
 
     @Override
@@ -162,7 +171,20 @@ public final class TextureNotificationListenerService extends NotificationListen
 
     public static void requestRebindNow(Context context) {
         Context application = context.getApplicationContext();
-        if (hasConnectedService()) {
+        if (hasLiveConnection()) {
+            long now = System.currentTimeMillis();
+            ListenerHealthStore.Snapshot health =
+                    NotificationRuntime.get(application).health().read();
+            // Live flag alone is not proof of a healthy bind. Do not cancel in-flight recovery
+            // when health is already stale / locked out — that was canceling force paths.
+            if (ListenerHealthPolicy.needsForceRestart(health, now, true)) {
+                forceStaleRebind(application);
+                return;
+            }
+            if (!ListenerHealthPolicy.isFresh(health, now)) {
+                requestHealthReconciliation(application);
+                return;
+            }
             cancelRebindRetries();
             requestHealthReconciliation(application);
             return;
@@ -180,13 +202,23 @@ public final class TextureNotificationListenerService extends NotificationListen
     public static void forceStaleRebind(Context context) {
         Context application = context.getApplicationContext();
         long now = System.currentTimeMillis();
-        synchronized (REBIND_LOCK) {
-            if (now - lastForcedRebindAt < FORCE_REBIND_COOLDOWN_MS) return;
-            lastForcedRebindAt = now;
-        }
+        NotificationRuntime.get(application).health().markStale(now, "force stale rebind");
+        // Always drop the in-process live lie first so requestRebind*/UI cannot no-op on it,
+        // even when the aggressive unbind path is cooldown-skipped.
         TextureNotificationListenerService service = activeService.get();
         if (service != null) {
             service.listenerConnected.set(false);
+            if (service.worker != null) service.worker.removeCallbacks(service.selfHealthCheck);
+        }
+        synchronized (REBIND_LOCK) {
+            if (now - lastForcedRebindAt < FORCE_REBIND_COOLDOWN_MS) {
+                // Cooldown must not become a total no-op: keep backoff recovery armed.
+                requestRebindWithBackoff(application);
+                return;
+            }
+            lastForcedRebindAt = now;
+        }
+        if (service != null) {
             try {
                 service.requestUnbind();
             } catch (RuntimeException ignored) {
@@ -197,22 +229,49 @@ public final class TextureNotificationListenerService extends NotificationListen
             try {
                 NotificationListenerService.requestRebind(component(application));
             } catch (RuntimeException ignored) {
-                requestRebindWithBackoff(application);
+                // fall through to backoff
             }
+            requestRebindWithBackoff(application);
         }, 750L);
+    }
+
+    /** True when any retained service instance currently reports a live listener connection. */
+    public static boolean hasLiveConnection() {
+        TextureNotificationListenerService service = activeService.get();
+        return service != null && service.listenerConnected.get();
     }
 
     private void handlePosted(StatusBarNotification statusBarNotification) {
         long now = System.currentTimeMillis();
-        runtime.health().callback(now);
         try {
             NotificationSnapshot snapshot = NotificationSnapshot.capture(statusBarNotification);
+            // Own FGS / system / service noise must not forge callback freshness — Core polls
+            // republish the foreground notification on every healthy loop and would keep the
+            // reader "active" forever while third-party posts are dead.
             if (!ingestionPolicy.shouldIngest(snapshot)) return;
+            runtime.health().callback(now);
             NormalizedNotification normalized = normalizer.normalize(this, snapshot, runtime.getDeviceId());
             EventWriteResult write = runtime.notifications().upsertActive(normalized, now);
             StoredNotificationEvent stored = write.getEvent();
             runtime.liveActions().put(runtime.liveActions().createEntry(
                     stored.getEventId(), stored.getVersion(), stored.getActionFingerprint(), snapshot));
+            if (normalized.getCapabilities().contains("REPLY")) {
+                try {
+                    String peer = peerKey(normalized);
+                    BankEntry banked = new BankEntry(
+                            new BankKey(peer, normalized.getPackageName()),
+                            stored.getEventId(),
+                            stored.getNotificationKey(),
+                            stored.getSenderName(),
+                            stored.getConversationLabel(),
+                            stored.getBody(),
+                            now);
+                    // adoptAndArm isolates snooze failures; never mark health failed here.
+                    runtime.bank().adoptAndArm(this, banked);
+                } catch (RuntimeException bankFailure) {
+                    // Bank persistence must never poison listener health or drop the notification.
+                }
+            }
         } catch (RuntimeException failure) {
             runtime.health().failed(now, failure);
             scheduleDebouncedReconciliation();
@@ -221,9 +280,11 @@ public final class TextureNotificationListenerService extends NotificationListen
 
     private void handleRemoved(StatusBarNotification statusBarNotification) {
         long now = System.currentTimeMillis();
-        runtime.health().callback(now);
         try {
             if (statusBarNotification == null) return;
+            NotificationSnapshot snapshot = NotificationSnapshot.capture(statusBarNotification);
+            if (!ingestionPolicy.shouldIngest(snapshot)) return;
+            runtime.health().callback(now);
             String eventId = ContentFingerprint.eventId(
                     runtime.getDeviceId(), statusBarNotification.getPackageName(), statusBarNotification.getKey());
             runtime.notifications().markRemoved(eventId, now);
@@ -264,13 +325,38 @@ public final class TextureNotificationListenerService extends NotificationListen
             runtime.notifications().markMissingRemoved(activeIds, now);
             runtime.liveActions().replaceAll(rebuilt);
             runtime.health().reconciled(now, activeIds.size());
-        } catch (SecurityException | IllegalStateException listenerFailure) {
+            // Successful getActiveNotifications is not proof of a live callback pipe.
+            // If callbacks are past FORCE (or never arrived after connect grace), treat as lockout.
+            ListenerHealthStore.Snapshot after = runtime.health().read();
+            if (ListenerHealthPolicy.probeLooksLockedOut(after, now, listenerConnected.get())) {
+                runtime.health().markStale(now, "reconcile without fresh callbacks");
+                forceStaleRebind(getApplicationContext());
+            }
+        } catch (SecurityException listenerFailure) {
             runtime.health().failed(now, listenerFailure);
-            requestRebindWithBackoff(getApplicationContext());
+            runtime.health().markStale(now, "listener security failure");
+            forceStaleRebind(getApplicationContext());
+        } catch (IllegalStateException listenerFailure) {
+            runtime.health().failed(now, listenerFailure);
+            runtime.health().markStale(now, "listener illegal state");
+            // Backoff is a no-op while hasLiveConnection() is true; must tear down the live lie.
+            forceStaleRebind(getApplicationContext());
         } catch (RuntimeException unexpected) {
             runtime.health().failed(now, unexpected);
-            requestRebindWithBackoff(getApplicationContext());
+            runtime.health().markStale(now, "listener reconcile failure");
+            forceStaleRebind(getApplicationContext());
         }
+    }
+
+    private static String peerKey(NormalizedNotification normalized) {
+        if (normalized.getSenderName() != null && !normalized.getSenderName().trim().isEmpty()) {
+            return normalized.getSenderName().trim();
+        }
+        if (normalized.getConversationLabel() != null
+                && !normalized.getConversationLabel().trim().isEmpty()) {
+            return normalized.getConversationLabel().trim();
+        }
+        return normalized.getPackageName();
     }
 
     private String safeEventId(StatusBarNotification item) {
@@ -299,8 +385,18 @@ public final class TextureNotificationListenerService extends NotificationListen
 
     private static void requestRebindWithBackoff(Context context) {
         Context application = context.getApplicationContext();
-        if (hasConnectedService()) {
-            cancelRebindRetries();
+        if (hasLiveConnection()) {
+            long now = System.currentTimeMillis();
+            ListenerHealthStore.Snapshot health =
+                    NotificationRuntime.get(application).health().read();
+            if (ListenerHealthPolicy.needsForceRestart(health, now, true)) {
+                forceStaleRebind(application);
+                return;
+            }
+            // Only clear recovery when the bind is actually fresh.
+            if (ListenerHealthPolicy.isFresh(health, now)) {
+                cancelRebindRetries();
+            }
             return;
         }
         synchronized (REBIND_LOCK) {
@@ -316,11 +412,6 @@ public final class TextureNotificationListenerService extends NotificationListen
             pendingRebind = null;
         }
         requestRebindNow(context);
-    }
-
-    private static boolean hasConnectedService() {
-        TextureNotificationListenerService service = activeService.get();
-        return service != null && service.listenerConnected.get();
     }
 
     private static void cancelRebindRetries() {
