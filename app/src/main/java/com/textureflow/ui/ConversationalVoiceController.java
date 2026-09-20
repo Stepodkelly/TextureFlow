@@ -1,4 +1,4 @@
-package com.textureflow;
+package com.textureflow.ui;
 
 import android.Manifest;
 import android.content.Context;

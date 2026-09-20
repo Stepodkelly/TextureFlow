@@ -160,7 +160,8 @@ public final class CoreActionClient {
                 Object value = response.opt("value");
                 return value == JSONObject.NULL ? null : value;
             }
-            throw new IOException(path + " failed");
+            String reason = response.optString("errorMessage", "Core rejected the request");
+            throw new IOException(safeReason(reason));
         } catch (JSONException invalidResponse) {
             throw new IOException(path + " returned invalid data", invalidResponse);
         } finally {
@@ -201,7 +202,7 @@ public final class CoreActionClient {
     }
 
     private static String expiry() {
-        return Instant.now().plus(2, ChronoUnit.MINUTES).toString();
+        return Instant.now().plus(90, ChronoUnit.SECONDS).toString();
     }
 
     private static void requireOk(JSONObject result) throws IOException {
@@ -237,5 +238,12 @@ public final class CoreActionClient {
             }
         }
         return body.toString();
+    }
+
+    private static String safeReason(String value) {
+        if (value == null || value.trim().isEmpty()) return "Core rejected the request";
+        String safe = value.replaceAll("(?i)(token|secret|authorization)\\s*[:=]\\s*\\S+", "$1=[redacted]")
+                .replace('\n', ' ').replace('\r', ' ').trim();
+        return safe.length() <= 240 ? safe : safe.substring(0, 240);
     }
 }

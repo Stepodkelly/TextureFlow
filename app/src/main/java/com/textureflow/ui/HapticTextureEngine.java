@@ -1,4 +1,4 @@
-package com.textureflow;
+package com.textureflow.ui;
 
 import android.content.Context;
 import android.os.Handler;
@@ -17,7 +17,7 @@ public final class HapticTextureEngine {
         void onScroll(int scrollY);
     }
 
-    private static final long MOVEMENT_STOP_DELAY_MS = 118L;
+    private static final long MOVEMENT_STOP_DELAY_MS = 480L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final TextureCueScheduler scheduler;

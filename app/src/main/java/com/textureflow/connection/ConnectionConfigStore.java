@@ -78,7 +78,26 @@ public final class ConnectionConfigStore {
     }
 
     public static String loadUserActionToken(Context context) {
-        return decrypt(preferences(context).getString(USER_ACTION_TOKEN, null));
+        String value = decrypt(preferences(context).getString(USER_ACTION_TOKEN, null));
+        if (blank(value)) return null;
+        value = value.trim();
+        String prefix = "TEXTUREFLOW_USER_TOKEN=";
+        int prefixIndex = value.indexOf(prefix);
+        if (prefixIndex >= 0) {
+            value = value.substring(prefixIndex + prefix.length());
+            int lineEnd = value.indexOf('\n');
+            if (lineEnd >= 0) value = value.substring(0, lineEnd);
+            value = value.trim();
+        }
+        if (value.length() >= 2) {
+            char first = value.charAt(0);
+            char last = value.charAt(value.length() - 1);
+            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')
+                    || (first == '`' && last == '`')) {
+                value = value.substring(1, value.length() - 1).trim();
+            }
+        }
+        return blank(value) ? null : value;
     }
 
     public static boolean isConfigured(Context context, String deviceId) {

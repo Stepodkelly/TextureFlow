@@ -10,8 +10,14 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
+
+import com.textureflow.notifications.TextureNotificationListenerService;
+import com.textureflow.notifications.NotificationRuntime;
+import com.textureflow.data.ListenerHealthStore;
 
 public final class TextureFlowConnectionService extends Service {
     public static final String ACTION_START = "com.textureflow.connection.START";
@@ -20,16 +26,40 @@ public final class TextureFlowConnectionService extends Service {
     private static final String CHANNEL_ID = "textureflow_connection";
     private static final String LOG_TAG = "TextureFlowConnection";
     private static final int NOTIFICATION_ID = 0x5446;
+    private static final long LISTENER_RECONCILIATION_MS = 15_000L;
+    private static final long LISTENER_STALE_AFTER_MS = 35_000L;
 
     private ConnectionEngine engine;
     private NotificationManager notificationManager;
     private volatile ConnectionStateMachine.State lastLoggedState;
+    private Handler healthHandler;
+    private Runnable listenerHealthCheck;
 
     @Override
     public void onCreate() {
         super.onCreate();
         notificationManager = getSystemService(NotificationManager.class);
         ensureChannel();
+        healthHandler = new Handler(Looper.getMainLooper());
+        listenerHealthCheck = new Runnable() {
+            @Override
+            public void run() {
+                ListenerHealthStore.Snapshot health = NotificationRuntime.get(
+                        getApplicationContext()).health().read();
+                long reconciliationAge = System.currentTimeMillis() - health.lastReconciledAt;
+                if (!health.connected || health.lastReconciledAt <= 0L
+                        || reconciliationAge < 0L
+                        || reconciliationAge > LISTENER_STALE_AFTER_MS) {
+                    TextureNotificationListenerService.forceStaleRebind(
+                            getApplicationContext());
+                } else {
+                    TextureNotificationListenerService.requestHealthReconciliation(
+                            getApplicationContext());
+                }
+                healthHandler.postDelayed(this, LISTENER_RECONCILIATION_MS);
+            }
+        };
+        healthHandler.post(listenerHealthCheck);
     }
 
     @Override
@@ -67,6 +97,9 @@ public final class TextureFlowConnectionService extends Service {
 
     @Override
     public void onDestroy() {
+        if (healthHandler != null && listenerHealthCheck != null) {
+            healthHandler.removeCallbacks(listenerHealthCheck);
+        }
         stopEngine();
         super.onDestroy();
     }

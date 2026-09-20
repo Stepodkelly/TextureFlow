@@ -33,7 +33,7 @@ final class TextureAudioRenderer {
     TextureAudioRenderer(Context context) {
         audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         attributes = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build();
         focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
@@ -162,7 +162,7 @@ final class TextureAudioRenderer {
                     break;
                 case CONTENT_MOVEMENT:
                     filteredNoise = filteredNoise * 0.88f + (random.nextFloat() * 2f - 1f) * 0.12f;
-                    value = filteredNoise * envelope(progress, 0.05f, 0.62f);
+                    value = filteredNoise * envelope(progress, 0.04f, 0.78f) * 2.35f;
                     break;
                 case FOCUS_ENTERED:
                     value = glass(t, progress, 1620f, 2380f, 31f);

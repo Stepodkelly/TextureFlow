@@ -34,7 +34,7 @@ public enum SensoryProfile {
             return false;
         }
         if (this == LOW_STIMULATION || this == VOICE_FIRST || this == HAPTIC_FIRST) {
-            return isEssential(cue);
+            return isEssential(cue) || cue == TextureCue.CONTENT_MOVEMENT;
         }
         return true;
     }
@@ -44,7 +44,8 @@ public enum SensoryProfile {
             return false;
         }
         if (this == LOW_STIMULATION || this == VOICE_FIRST) {
-            return isEssential(cue) || cue == TextureCue.FOCUS_ENTERED;
+            return isEssential(cue) || cue == TextureCue.FOCUS_ENTERED
+                    || cue == TextureCue.CONTENT_MOVEMENT;
         }
         return true;
     }

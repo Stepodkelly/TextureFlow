@@ -1,6 +1,7 @@
 package com.textureflow.texture;
 
 import android.content.Context;
+import android.media.AudioAttributes;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.HapticFeedbackConstants;
@@ -8,6 +9,10 @@ import android.view.View;
 
 final class TextureHapticRenderer {
     private final Vibrator vibrator;
+    private final AudioAttributes accessibilityAttributes = new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build();
 
     TextureHapticRenderer(Context context) {
         vibrator = context.getSystemService(Vibrator.class);
@@ -20,7 +25,7 @@ final class TextureHapticRenderer {
         if (vibrator != null && vibrator.hasVibrator()) {
             try {
                 vibrator.cancel();
-                vibrator.vibrate(effectFor(cue, strength));
+                vibrator.vibrate(effectFor(cue, strength), accessibilityAttributes);
                 return true;
             } catch (RuntimeException ignored) {
                 // Fall through to semantic view feedback when vibration is unavailable.
@@ -42,7 +47,7 @@ final class TextureHapticRenderer {
     private VibrationEffect effectFor(TextureCue cue, float strength) {
         switch (cue) {
             case CONTENT_MOVEMENT:
-                return oneShot(7, 32, strength);
+                return oneShot(16, 96, strength);
             case FOCUS_ENTERED:
                 return oneShot(14, 74, strength);
             case LISTENING_STARTED:

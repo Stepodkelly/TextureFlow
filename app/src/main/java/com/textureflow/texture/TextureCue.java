@@ -3,8 +3,8 @@ package com.textureflow.texture;
 /** Canonical semantic cues shared with shared/contracts/domain.ts. */
 public enum TextureCue {
     LISTENING_STARTED(Priority.NORMAL, SpeechPolicy.DUCK_UNDER_SPEECH, RepeatPolicy.ONCE_PER_CORRELATION, 260),
-    CONTENT_MOVEMENT(Priority.LOW, SpeechPolicy.SUPPRESS_UNDER_SPEECH, RepeatPolicy.RATE_LIMITED, 110),
-    FOCUS_ENTERED(Priority.LOW, SpeechPolicy.SUPPRESS_UNDER_SPEECH, RepeatPolicy.RATE_LIMITED, 100),
+    CONTENT_MOVEMENT(Priority.LOW, SpeechPolicy.DUCK_UNDER_SPEECH, RepeatPolicy.RATE_LIMITED, 420),
+    FOCUS_ENTERED(Priority.LOW, SpeechPolicy.DUCK_UNDER_SPEECH, RepeatPolicy.RATE_LIMITED, 100),
     ATTENTION_URGENT(Priority.HIGH, SpeechPolicy.DUCK_UNDER_SPEECH, RepeatPolicy.ONCE_PER_CORRELATION, 300),
     PROPOSAL_READY(Priority.NORMAL, SpeechPolicy.DUCK_UNDER_SPEECH, RepeatPolicy.ONCE_PER_CORRELATION, 320),
     CONFIRMATION_REQUIRED(Priority.HIGH, SpeechPolicy.DUCK_UNDER_SPEECH, RepeatPolicy.ONCE_PER_CORRELATION, 380),

@@ -30,20 +30,24 @@ public final class CommandProcessor {
         int executedCount = 0;
         for (RemoteCommand observed : commands) {
             if (!"LIVE".equals(observed.sourceMode())) continue;
-            CommandEnvelopeValidator.requireExecutableTarget(observed, ownerId, deviceId);
-            ClaimRecord persisted = claims.getOrCreate(observed, nowMillis);
-            RemoteGateway.ClaimResult claim = gateway.claimCommand(
-                    observed.commandId(), persisted.claimToken());
-            if (!claim.claimed()) continue;
-            claimedCount++;
-            RemoteCommand claimedCommand = claim.command() == null ? observed : claim.command();
-            RemoteProposal proposal = gateway.loadProposal(claimedCommand.proposalId());
-            CommandEnvelopeValidator.requireExactMatch(claimedCommand, proposal, ownerId, deviceId);
-            RemoteGateway.StartResult started = gateway.startExecution(
-                    claimedCommand.commandId(), persisted.claimToken());
-            if (!started.executable()) continue;
-            executor.execute(claimedCommand, proposal);
-            executedCount++;
+            try {
+                CommandEnvelopeValidator.requireExecutableTarget(observed, ownerId, deviceId);
+                ClaimRecord persisted = claims.getOrCreate(observed, nowMillis);
+                RemoteGateway.ClaimResult claim = gateway.claimCommand(
+                        observed.commandId(), persisted.claimToken());
+                if (!claim.claimed()) continue;
+                claimedCount++;
+                RemoteCommand claimedCommand = claim.command() == null ? observed : claim.command();
+                RemoteProposal proposal = gateway.loadProposal(claimedCommand.proposalId());
+                CommandEnvelopeValidator.requireExactMatch(claimedCommand, proposal, ownerId, deviceId);
+                RemoteGateway.StartResult started = gateway.startExecution(
+                        claimedCommand.commandId(), persisted.claimToken());
+                if (!started.executable()) continue;
+                executor.execute(claimedCommand, proposal);
+                executedCount++;
+            } catch (SecurityException malformedOrMisdirectedCommand) {
+                // One invalid envelope must not starve later confirmed commands in the batch.
+            }
         }
         return new ProcessResult(commands.size(), claimedCount, executedCount);
     }

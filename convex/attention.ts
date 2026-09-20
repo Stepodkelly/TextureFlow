@@ -40,6 +40,33 @@ function publicEvent(event: {
   };
 }
 
+function preferredSourceMode<T extends { sourceMode: "LIVE" | "REHEARSAL" }>(events: T[]) {
+  return events.some((event) => event.sourceMode === "LIVE")
+    ? ("LIVE" as const)
+    : ("REHEARSAL" as const);
+}
+
+function actionableOrder(
+  left: {
+    capabilities: string[];
+    priority: { score: number; level: "LOW" | "NORMAL" | "IMPORTANT" | "URGENT" };
+    updatedAtMs: number;
+  },
+  right: {
+    capabilities: string[];
+    priority: { score: number; level: "LOW" | "NORMAL" | "IMPORTANT" | "URGENT" };
+    updatedAtMs: number;
+  },
+) {
+  const urgent = Number(right.priority.level === "URGENT")
+    - Number(left.priority.level === "URGENT");
+  if (urgent !== 0) return urgent;
+  const replyable = Number(right.capabilities.includes("REPLY"))
+    - Number(left.capabilities.includes("REPLY"));
+  if (replyable !== 0) return replyable;
+  return right.priority.score - left.priority.score || right.updatedAtMs - left.updatedAtMs;
+}
+
 export const list = query({
   args: {
     actor: actorInputValidator,
@@ -49,31 +76,21 @@ export const list = query({
   handler: async (ctx, args) => {
     const actor = await requireActor(ctx, args.actor, ["USER", "BRIDGE", "DEVICE"]);
     const limit = clampLimit(args.limit, 3, 20);
-    const scanLimit = Math.max(limit * 4, 20);
-    const [active, updated] = await Promise.all([
-      ctx.db
-        .query("notificationEvents")
-        .withIndex("by_owner_status_priority", (query) =>
-          query.eq("ownerId", actor.ownerId).eq("status", "ACTIVE"),
-        )
-        .order("desc")
-        .take(scanLimit),
-      ctx.db
-        .query("notificationEvents")
-        .withIndex("by_owner_status_priority", (query) =>
-          query.eq("ownerId", actor.ownerId).eq("status", "UPDATED"),
-        )
-        .order("desc")
-        .take(scanLimit),
-    ]);
+    const recent = await ctx.db
+      .query("notificationEvents")
+      .withIndex("by_owner_updated", (query) => query.eq("ownerId", actor.ownerId))
+      .order("desc")
+      .take(200);
     const rank = { LOW: 0, NORMAL: 1, IMPORTANT: 2, URGENT: 3 } as const;
     const minimumRank = args.minimumLevel ? rank[args.minimumLevel] : 0;
-    const candidates = [...active, ...updated]
+    const current = recent.filter(
+      (event) => event.status === "ACTIVE" || event.status === "UPDATED",
+    );
+    const sourceMode = preferredSourceMode(current);
+    const candidates = current
+      .filter((event) => event.sourceMode === sourceMode)
       .filter((event) => rank[event.priority.level] >= minimumRank)
-      .sort(
-        (left, right) =>
-          right.priority.score - left.priority.score || right.updatedAtMs - left.updatedAtMs,
-      )
+      .sort(actionableOrder)
       .slice(0, limit);
 
     const now = Date.now();
@@ -102,6 +119,7 @@ export const weave = query({
     const current = events.filter(
       (event) => event.status === "ACTIVE" || event.status === "UPDATED",
     );
+    const sourceMode = preferredSourceMode(current);
     const groups = new Map<
       string,
       {
@@ -112,7 +130,7 @@ export const weave = query({
         latestAtMs: number;
       }
     >();
-    for (const event of current) {
+    for (const event of current.filter((candidate) => candidate.sourceMode === sourceMode)) {
       const key = event.sender.personId ?? `${event.app.packageName}:${event.sender.displayName}`;
       const group = groups.get(key) ?? {
         personId: event.sender.personId,

@@ -1,4 +1,4 @@
-package com.textureflow;
+package com.textureflow.ui;
 
 import android.Manifest;
 import android.app.Activity;
@@ -15,7 +15,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -28,6 +30,7 @@ import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 
+import com.textureflow.BuildConfig;
 import com.textureflow.connection.ConnectionConfigStore;
 import com.textureflow.connection.ConnectionConfig;
 import com.textureflow.connection.ConnectionStatusStore;
@@ -39,6 +42,7 @@ import com.textureflow.data.StoredNotificationEvent;
 import com.textureflow.notifications.NotificationHealthJobService;
 import com.textureflow.notifications.NotificationRuntime;
 import com.textureflow.notifications.TextureNotificationListenerService;
+import com.textureflow.policy.AttentionQueuePolicy;
 import com.textureflow.texture.SensoryProfile;
 import com.textureflow.texture.TextureCue;
 import com.textureflow.texture.TextureCueScheduler;
@@ -139,6 +143,7 @@ public final class MainActivity extends Activity {
     private SessionState sessionState = SessionState.IDLE;
     private StoredNotificationEvent currentAttention;
     private final Set<String> handledAttentionKeys = new LinkedHashSet<>();
+    private final Map<String, Long> hiddenEventUntil = new LinkedHashMap<>();
     private int activeQueueSize;
     private String currentProposalId;
     private CoreActionClient.Proposal activePhoneProposal;
@@ -268,6 +273,21 @@ public final class MainActivity extends Activity {
                 | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
                 | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         responseEditor.setVisibility(View.GONE);
+        responseEditor.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence value, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence value, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable value) {
+                if (activePhoneProposal == null
+                        || activePhoneProposal.actionType() != ActionType.REPLY
+                        || phoneActionBusy) return;
+                boolean changed = !value.toString().trim().equals(activePhoneProposal.replyMessage());
+                confirmButton.setText(changed ? "Review changes" : "Send now");
+                if (changed) {
+                    responseStatus.setText("Reply changed. Review the revised exact preview before sending.");
+                    responseStatus.setVisibility(View.VISIBLE);
+                }
+            }
+        });
         textureEngine.attachGlassControl(responseEditor);
         textureEngine.attachScrollTexture(responseEditor);
         responsePanel.addView(responseEditor, topMargin(dp(8)));
@@ -415,6 +435,14 @@ public final class MainActivity extends Activity {
         sensorySummary = supportingValue("");
         sensorySummary.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         sensoryPanel.addView(sensorySummary, topMargin(dp(8)));
+        Button testTextures = button("Test textures", TEAL);
+        testTextures.setCompoundDrawablesWithIntrinsicBounds(
+                android.R.drawable.ic_media_play, 0, 0, 0);
+        testTextures.setOnClickListener(view -> {
+            textureEngine.playCarpetScroll(view);
+            mainHandler.postDelayed(() -> textureEngine.playGlassTouch(view), 650L);
+        });
+        sensoryPanel.addView(testTextures, topMargin(dp(10)));
         content.addView(sensoryPanel, wideWithTop(dp(12)));
 
         LinearLayout receiptPanel = surface(dp(28));
@@ -579,12 +607,23 @@ public final class MainActivity extends Activity {
 
     private List<StoredNotificationEvent> attentionQueue(List<StoredNotificationEvent> events) {
         List<StoredNotificationEvent> queue = new ArrayList<>();
+        long now = System.currentTimeMillis();
         for (StoredNotificationEvent event : events) {
-            if (!"IMPORTANT".equals(event.getPriorityLevel())
-                    && !"URGENT".equals(event.getPriorityLevel())) continue;
+            if (!AttentionQueuePolicy.shouldSurface(
+                    event.getPriorityLevel(), event.hasCapability("REPLY"))) continue;
+            Long hiddenUntil = hiddenEventUntil.get(event.getEventId());
+            if (hiddenUntil != null && hiddenUntil > now) continue;
+            if (hiddenUntil != null) hiddenEventUntil.remove(event.getEventId());
             if (!handledAttentionKeys.contains(attentionKey(event))) queue.add(event);
         }
         queue.sort((left, right) -> {
+            int urgency = Boolean.compare(
+                    "URGENT".equals(right.getPriorityLevel()),
+                    "URGENT".equals(left.getPriorityLevel()));
+            if (urgency != 0) return urgency;
+            int replyability = Boolean.compare(
+                    right.hasCapability("REPLY"), left.hasCapability("REPLY"));
+            if (replyability != 0) return replyability;
             int priority = Double.compare(right.getPriorityScore(), left.getPriorityScore());
             return priority != 0 ? priority : Long.compare(right.getUpdatedAt(), left.getUpdatedAt());
         });
@@ -671,8 +710,10 @@ public final class MainActivity extends Activity {
                 CoreActionClient.Proposal proposal = client.create(event, type, payload);
                 runOnUiThread(() -> renderPhoneProposal(event, proposal));
             } catch (Exception failure) {
-                runOnUiThread(() -> finishPhoneActionFailure(
-                        "Core could not prepare that action. Check the connection and User token."));
+                String reason = failure.getMessage();
+                runOnUiThread(() -> finishPhoneActionFailure(reason == null
+                        ? "Core could not prepare that action."
+                        : "Core: " + reason));
             }
         });
     }
@@ -697,6 +738,7 @@ public final class MainActivity extends Activity {
         confirmButton.setText(proposal.actionType() == ActionType.REPLY ? "Send now" : "Confirm");
         confirmButton.setVisibility(View.VISIBLE);
         cancelButton.setVisibility(View.VISIBLE);
+        cancelButton.setText("Back to actions");
         confirmButton.setEnabled(true);
         cancelButton.setEnabled(true);
         if (proposal.actionType() == ActionType.REPLY) {
@@ -923,10 +965,34 @@ public final class MainActivity extends Activity {
     private void handleVoiceUtterance(String utterance) {
         String spoken = utterance == null ? "" : utterance.trim();
         if (spoken.isEmpty()) return;
-        String normalized = spoken.toLowerCase(Locale.US);
+        String normalized = spoken.toLowerCase(Locale.US)
+                .replaceAll("[\\s.!?]+$", "").trim();
+
+        String dictatedReply = VoiceCommandParser.replyDraft(spoken, normalized);
+        if (dictatedReply != null && currentAttention != null) {
+            if (!currentAttention.hasCapability("REPLY")) {
+                voiceController.speakAndListen(
+                        "This notification cannot accept a reply. Say snooze this, done, or next.");
+                return;
+            }
+            responseEditor.setVisibility(View.VISIBLE);
+            responseEditor.setText(dictatedReply);
+            responseEditor.setSelection(responseEditor.length());
+            responseTitle.setText(activePhoneProposal == null ? "Proposed reply" : "Revised reply");
+            responseStatus.setText("Preparing the exact reply preview");
+            responseStatus.setVisibility(View.VISIBLE);
+            if (activePhoneProposal == null) selectResponseAction("Send");
+            else confirmPhoneProposal();
+            return;
+        }
 
         if (activePhoneProposal != null && (normalized.equals("confirm")
-                || normalized.equals("send") || normalized.equals("send it"))) {
+                || normalized.equals("yes") || normalized.equals("go ahead")
+                || normalized.equals("do it") || normalized.equals("send")
+                || normalized.equals("send it") || normalized.equals("send that")
+                || normalized.equals("send now") || normalized.equals("yes send")
+                || normalized.equals("confirm and send")
+                || normalized.equals("review changes"))) {
             requestConfirmation(confirmButton);
             return;
         }
@@ -948,17 +1014,21 @@ public final class MainActivity extends Activity {
             }
         }
         if (activePhoneProposal == null && currentAttention != null
-                && (normalized.equals("send") || normalized.equals("send it"))) {
+                && (normalized.equals("send") || normalized.equals("send it")
+                || normalized.equals("send that") || normalized.equals("send now"))) {
             selectResponseAction("Send");
             return;
         }
         if (activePhoneProposal == null && currentAttention != null
-                && (normalized.equals("later") || normalized.startsWith("remind me later"))) {
+                && (normalized.equals("later") || normalized.equals("snooze")
+                || normalized.equals("snooze this")
+                || normalized.startsWith("remind me later"))) {
             selectResponseAction("Later");
             return;
         }
         if (activePhoneProposal == null && currentAttention != null
-                && (normalized.equals("done") || normalized.equals("dismiss"))) {
+                && (normalized.equals("done") || normalized.equals("dismiss")
+                || normalized.equals("dismiss this") || normalized.equals("next"))) {
             selectResponseAction("Done");
             return;
         }
@@ -966,25 +1036,9 @@ public final class MainActivity extends Activity {
             voiceController.speakAndListen(answerFromLocalHistory(spoken));
             return;
         }
-        if (currentAttention != null && (normalized.startsWith("reply ")
-                || normalized.startsWith("say ") || normalized.startsWith("tell them "))) {
-            String draft = spoken.substring(spoken.indexOf(' ') + 1).trim();
-            if (!draft.isEmpty()) {
-                responseEditor.setVisibility(View.VISIBLE);
-                responseEditor.setText(draft);
-                responseEditor.setSelection(responseEditor.length());
-                responseTitle.setText("Proposed reply");
-                responseStatus.setText("Review the draft, then tap Send or say send");
-                responseStatus.setVisibility(View.VISIBLE);
-                voiceController.speakAndListen("I drafted that reply. You can change it, or say send.");
-                return;
-            }
-        }
         if (currentAttention != null) {
-            voiceController.speakAndListen("The current message from "
-                    + emptyFallback(currentAttention.getSenderName(), "this person") + " says: "
-                    + emptyFallback(currentAttention.getBody(), "No preview is available.")
-                    + " You can ask for a reply, later, or done.");
+            voiceController.speakAndListen(
+                    "I did not catch the action. Say reply with your message, snooze this, done, or ask about the conversation.");
         } else {
             voiceController.speakAndListen("You are all caught up. Ask me about a recent person or message.");
         }
@@ -1297,8 +1351,14 @@ public final class MainActivity extends Activity {
             confirmButton.setVisibility(View.GONE);
             cancelButton.setVisibility(View.GONE);
             currentProposalId = null;
+            cancelButton.setText("Cancel");
             textureEngine.emit(dispatched ? TextureCue.ACTION_DISPATCHED : TextureCue.ACTION_FAILED,
                     safeId(receiptId, "receipt"), responsePanel);
+            if (!dispatched && currentAttention != null) {
+                responseEditor.setEnabled(true);
+                renderResponseOptions(currentAttention);
+                responseOptions.setVisibility(View.VISIBLE);
+            }
             mainHandler.postDelayed(this::refreshLocalSurface, 350L);
         });
     }
@@ -1388,7 +1448,7 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> renderExecution(confirmation.commandId(),
                         "Waiting for Android receipt"));
                 CoreActionClient.Receipt receipt = confirmation.receipt() == null
-                        ? client.awaitReceipt(confirmation.commandId(), 20_000L)
+                        ? client.awaitReceipt(confirmation.commandId(), 65_000L)
                         : confirmation.receipt();
                 runOnUiThread(() -> finishPhoneConfirmation(proposal, event, receipt));
             } catch (Exception failure) {
@@ -1404,25 +1464,34 @@ public final class MainActivity extends Activity {
             CoreActionClient.Receipt receipt) {
         phoneActionBusy = false;
         if (receipt == null) {
-            responseStatus.setText("Confirmed. Android is still processing the command.");
+            sessionState = SessionState.FAILED;
+            responseStatus.setText(
+                    "No Android receipt arrived before expiry. Check the source app before retrying.");
             responseStatus.setVisibility(View.VISIBLE);
             confirmButton.setVisibility(View.GONE);
             cancelButton.setVisibility(View.GONE);
             activePhoneProposal = null;
             activeProposalEvent = null;
             currentProposalId = null;
+            if (currentAttention != null) {
+                renderResponseOptions(currentAttention);
+                responseOptions.setVisibility(View.VISIBLE);
+            }
             return;
         }
         ReceiptState state = receiptState(receipt.status());
-        if (state == ReceiptState.DISPATCHED && proposal.actionType() == ActionType.REPLY) {
+        if (state == ReceiptState.DISPATCHED) {
             handledAttentionKeys.add(attentionKey(event));
-            responseEditor.setText("");
+            hiddenEventUntil.put(event.getEventId(), System.currentTimeMillis() + 30_000L);
+            if (proposal.actionType() == ActionType.REPLY) responseEditor.setText("");
+            TextureNotificationListenerService.requestHealthReconciliation(this);
         }
         activePhoneProposal = null;
         activeProposalEvent = null;
         renderReceipt(receipt.receiptId(), state, receipt.message());
-        voiceController.speak(state == ReceiptState.DISPATCHED
-                ? "Done. Android dispatched the action." : "That action was not dispatched.");
+        voiceController.speakAndListen(state == ReceiptState.DISPATCHED
+                ? "Done. I moved to the next item. You can reply, snooze, dismiss, or ask about the conversation."
+                : "That action was not dispatched. You can retry, change it, or choose another action.");
     }
 
     private void cancelPhoneProposal() {

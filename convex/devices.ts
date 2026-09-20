@@ -176,7 +176,9 @@ export const status = query({
         lastSeenAt: device?.lastSeenAt ?? new Date(0).toISOString(),
       },
       activeEventCount: events.filter(
-        (event) => event.status === "ACTIVE" || event.status === "UPDATED",
+        (event) =>
+          event.sourceMode === (device?.status === "REHEARSAL" ? "REHEARSAL" : "LIVE")
+          && (event.status === "ACTIVE" || event.status === "UPDATED"),
       ).length,
       pendingProposalCount: proposals.filter(
         (proposal) => proposal.status === "PROPOSED" || proposal.status === "REVISED",

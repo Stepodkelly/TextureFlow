@@ -29,9 +29,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class TextureNotificationListenerService extends NotificationListenerService
         implements NotificationControl {
     private static final long CALLBACK_RECONCILE_DELAY_MS = 2_000L;
+    private static final long SELF_HEALTH_INTERVAL_MS = 10_000L;
     private static final Handler REBIND_HANDLER = new Handler(Looper.getMainLooper());
     private static final Object REBIND_LOCK = new Object();
     private static final AtomicInteger REBIND_ATTEMPTS = new AtomicInteger();
+    private static final long FORCE_REBIND_COOLDOWN_MS = 30_000L;
+    private static volatile long lastForcedRebindAt;
     private static volatile WeakReference<TextureNotificationListenerService> activeService =
             new WeakReference<>(null);
     private static Runnable pendingRebind;
@@ -43,6 +46,15 @@ public final class TextureNotificationListenerService extends NotificationListen
     private NotificationRuntime runtime;
     private NotificationNormalizer normalizer;
     private NotificationIngestionPolicy ingestionPolicy;
+    private final Runnable selfHealthCheck = new Runnable() {
+        @Override
+        public void run() {
+            if (listenerConnected.get()) {
+                reconcileActiveNotifications("listener-self-health");
+            }
+            if (worker != null) worker.postDelayed(this, SELF_HEALTH_INTERVAL_MS);
+        }
+    };
 
     @Override
     public void onCreate() {
@@ -66,12 +78,15 @@ public final class TextureNotificationListenerService extends NotificationListen
         postReliable(() -> {
             runtime.health().connected(System.currentTimeMillis());
             reconcileActiveNotifications("listener-connected");
+            worker.removeCallbacks(selfHealthCheck);
+            worker.postDelayed(selfHealthCheck, SELF_HEALTH_INTERVAL_MS);
         });
     }
 
     @Override
     public void onListenerDisconnected() {
         listenerConnected.set(false);
+        if (worker != null) worker.removeCallbacks(selfHealthCheck);
         postReliable(() -> runtime.health().disconnected(
                 System.currentTimeMillis(), "Notification listener disconnected"));
         requestRebindWithBackoff(getApplicationContext());
@@ -103,6 +118,7 @@ public final class TextureNotificationListenerService extends NotificationListen
         listenerConnected.set(false);
         if (activeService.get() == this) activeService = new WeakReference<>(null);
         if (worker != null) {
+            worker.removeCallbacks(selfHealthCheck);
             worker.post(() -> runtime.health().disconnected(
                     System.currentTimeMillis(), "Notification listener destroyed"));
         }
@@ -148,6 +164,7 @@ public final class TextureNotificationListenerService extends NotificationListen
         Context application = context.getApplicationContext();
         if (hasConnectedService()) {
             cancelRebindRetries();
+            requestHealthReconciliation(application);
             return;
         }
         try {
@@ -157,6 +174,32 @@ public final class TextureNotificationListenerService extends NotificationListen
         } finally {
             requestRebindWithBackoff(application);
         }
+    }
+
+    /** Tears down a framework connection proven stale by an external freshness watchdog. */
+    public static void forceStaleRebind(Context context) {
+        Context application = context.getApplicationContext();
+        long now = System.currentTimeMillis();
+        synchronized (REBIND_LOCK) {
+            if (now - lastForcedRebindAt < FORCE_REBIND_COOLDOWN_MS) return;
+            lastForcedRebindAt = now;
+        }
+        TextureNotificationListenerService service = activeService.get();
+        if (service != null) {
+            service.listenerConnected.set(false);
+            try {
+                service.requestUnbind();
+            } catch (RuntimeException ignored) {
+                // The delayed framework rebind below is still attempted.
+            }
+        }
+        REBIND_HANDLER.postDelayed(() -> {
+            try {
+                NotificationListenerService.requestRebind(component(application));
+            } catch (RuntimeException ignored) {
+                requestRebindWithBackoff(application);
+            }
+        }, 750L);
     }
 
     private void handlePosted(StatusBarNotification statusBarNotification) {

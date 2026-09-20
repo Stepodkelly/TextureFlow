@@ -1,4 +1,4 @@
-package com.textureflow;
+package com.textureflow.ui;
 
 import android.content.Context;
 import android.graphics.Bitmap;

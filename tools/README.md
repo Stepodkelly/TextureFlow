@@ -1,30 +1,23 @@
-# TextureFlow QA tools
+# Tools (`tools/`)
 
-These dependency-free Node tools operate in `REHEARSAL` mode only. They read
-canonical fixtures from `shared/fixtures/demo-events.json`, validate contract
-version 1, and never access credentials, call the network, execute an Android
-action, or create an `ActionReceipt`.
+Scripts for **checking**, **demoing**, and **debugging**.
 
-```bash
-node tools/validate-contracts/index.mjs
-node tools/inject-demo-event/index.mjs --list
-node tools/inject-demo-event/index.mjs --fixture evt_demo_sam
-node tools/run-rehearsal/index.mjs --list
-node tools/run-rehearsal/index.mjs --scenario proposal-only
-node tools/run-rehearsal/index.mjs --scenario confirmed-awaiting-device
-node tools/run-rehearsal/index.mjs --all
-node tools/run-rehearsal/index.mjs --scenario stale-event --json \
-  | node tools/trace-report/index.mjs
-node --test tools/test/*.test.mjs
-```
+You usually run these from the repo root with Node.
 
-`inject-demo-event` prints a labeled envelope to stdout. An integration-owned
-adapter may deliberately unwrap its `event` field and pass it to a local or
-cloud fixture mutation. The injector itself has no endpoint or secret support,
-which prevents an offline rehearsal command from being mistaken for live
-ingestion.
+## Common scripts
 
-The confirmed rehearsal queues a contract-valid `TextureCommand` but stops at
-`AWAITING_DEVICE_EVIDENCE`. Only the authenticated Android execution path may
-produce a receipt or claim `DISPATCHED`.
+| Script | What it does |
+|--------|----------------|
+| `live-smoke/run.mjs` | Safe end-to-end smoke (synthetic; blocks real dispatch) |
+| `verify-bridge-live.mjs` | Checks the voice bridge against Convex |
+| `seed-demo.mjs` | Seeds demo data |
+| `audit-secrets.mjs` | Looks for accidental secrets |
+| `validate-contracts/` | Contract checks |
+| `run-rehearsal/` | Rehearsal / demo flow helpers |
 
+See also root `package.json` scripts (`npm run check`, etc.).
+
+## Beginner tip
+
+Prefer `live-smoke` before any real-device demo. It is designed to stop before
+dangerous execution.

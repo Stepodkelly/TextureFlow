@@ -1,4 +1,4 @@
-package com.textureflow;
+package com.textureflow.ui;
 
 import android.animation.ValueAnimator;
 import android.content.Context;

@@ -160,6 +160,13 @@ public final class TextureCueScheduler {
 
         long now = SystemClock.uptimeMillis();
         boolean hasActiveCue = activeCue != null && activeUntil > now;
+        if (hasActiveCue && activeCue == TextureCue.CONTENT_MOVEMENT
+                && cue == TextureCue.CONTENT_MOVEMENT) {
+            if (hapticsEnabled && profile.allowsHaptics(cue)) {
+                hapticRenderer.play(cue, profile.hapticStrength(), hapticFallbackView);
+            }
+            return;
+        }
         if (hasActiveCue && activeCue.priority().ordinal() > cue.priority().ordinal()) {
             return;
         }
@@ -182,7 +189,7 @@ public final class TextureCueScheduler {
         boolean duckAudioForSpeech = speechActive
                 && cue.speechPolicy() == TextureCue.SpeechPolicy.DUCK_UNDER_SPEECH;
         if (audioEnabled && !suppressAudioForSpeech && profile.allowsAudio(cue)) {
-            float strength = profile.audioStrength() * (duckAudioForSpeech ? 0.24f : 1f);
+            float strength = profile.audioStrength() * (duckAudioForSpeech ? 0.42f : 1f);
             // A ducked cue may mix quietly, but never requests focus away from speech.
             audioRenderer.play(cue, strength, !speechActive);
         }
