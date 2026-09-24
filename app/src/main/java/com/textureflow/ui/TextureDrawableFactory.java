@@ -7,6 +7,7 @@ import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
@@ -107,11 +108,17 @@ public final class TextureDrawableFactory {
         private final Paint veilPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF bounds = new RectF();
+        private final Matrix coverMatrix = new Matrix();
+        private final Bitmap texture;
+        private final BitmapShader textureShader;
         private final float radius;
 
         TexturedSurfaceDrawable(Bitmap texture, float radius, int veilColor, int strokeColor, int textureAlpha) {
             this.radius = radius;
-            texturePaint.setShader(new BitmapShader(texture, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT));
+            this.texture = texture;
+            // CLAMP + cover — never REPEAT (avoids page-break seams on panels).
+            textureShader = new BitmapShader(texture, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            texturePaint.setShader(textureShader);
             texturePaint.setAlpha(textureAlpha);
             veilPaint.setColor(veilColor);
             strokePaint.setColor(strokeColor);
@@ -122,6 +129,17 @@ public final class TextureDrawableFactory {
         @Override
         protected void onBoundsChange(Rect rect) {
             bounds.set(rect.left + 0.75f, rect.top + 0.75f, rect.right - 0.75f, rect.bottom - 0.75f);
+            float bw = Math.max(1, texture.getWidth());
+            float bh = Math.max(1, texture.getHeight());
+            float vw = Math.max(1f, bounds.width());
+            float vh = Math.max(1f, bounds.height());
+            float scale = Math.max(vw / bw, vh / bh);
+            float dx = bounds.left + (vw - bw * scale) * 0.5f;
+            float dy = bounds.top + (vh - bh * scale) * 0.5f;
+            coverMatrix.reset();
+            coverMatrix.setScale(scale, scale);
+            coverMatrix.postTranslate(dx, dy);
+            textureShader.setLocalMatrix(coverMatrix);
         }
 
         @Override

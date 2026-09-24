@@ -65,10 +65,26 @@ public final class NotificationBank {
         BankEntry entry = store.peek(key);
         if (entry == null) return false;
         boolean woke = BankArming.wake(control, entry);
+        if (!woke) return false;
         long now = System.currentTimeMillis();
-        long until = woke ? now + BankArming.WAKE_MS : entry.snoozeUntilMillis();
-        store.upsert(entry.withState(BankState.WAKING, until, now));
-        return woke;
+        store.upsert(entry.withState(BankState.WAKING, now + BankArming.WAKE_MS, now));
+        return true;
+    }
+
+    /**
+     * After a successful wake, the listener must adopt the reposted handle without
+     * immediately re-arming snooze — otherwise cold-start never gets a LIVE window.
+     */
+    public BankEntry adoptAfterWake(BankEntry entry) {
+        if (entry == null) throw new IllegalArgumentException("entry is required");
+        long now = entry.updatedAt() > 0L ? entry.updatedAt() : System.currentTimeMillis();
+        BankState next = outbox.hasPendingFor(entry.key())
+                ? BankState.DRAINING_OUTBOX
+                : BankState.LIVE;
+        BankEntry live = entry.withState(next, 0L, now);
+        store.upsert(live);
+        refill.clear(entry.key());
+        return live;
     }
 
     public String enqueueOutbound(String peerKey, String packageName, String body) {

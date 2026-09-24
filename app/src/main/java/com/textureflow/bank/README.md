@@ -42,6 +42,9 @@ bank/
 `TextureNotificationListenerService.handlePosted` calls `bank().adoptAndArm(...)`
 inside an isolated try/catch so bank/snooze failures never poison listener health.
 
+If the bank slot is already `WAKING` (cold-start), the listener calls
+`adoptAfterWake(...)` instead — so the handle is not immediately re-snoozed.
+
 ## Related modules
 
 - `notifications/` — capture + `NotificationControl` snooze APIs

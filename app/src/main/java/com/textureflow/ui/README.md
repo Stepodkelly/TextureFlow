@@ -8,7 +8,8 @@
 | `VoiceCommandParser.java` | Spoken phrases → reply drafts |
 | `EyeOfHorusView.java` | Legacy eye visual (still used in some states) |
 | `HapticTextureEngine.java` | Bridges UI events to sensory cues |
-| `TextureBackgroundView.java` | Background texture scrolling |
+| `TextureBackgroundView.java` | Paper base; moth JPEG is invisible whiteness map (no watermark) |
+| `MothAlbedoShader.java` | Continuous cover UVs; catch ∝ map whiteness (no tile seams) |
 | `TextureDrawableFactory.java` | Drawable helpers |
 | `ShakeUrgencyController.java` | Shake → urgency behavior |
 

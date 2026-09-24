@@ -29,6 +29,7 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -113,6 +114,8 @@ public final class MainActivity extends Activity {
     private EditText searchField;
     private TextView chatsEmpty;
     private final List<PersonTimeline> cachedPeople = new ArrayList<>();
+    private final List<View> glowRingViews = new ArrayList<>();
+    private final List<Integer> glowRingColors = new ArrayList<>();
     private String activeConversationKey;
 
     private EyeOfHorusView eyeView;
@@ -146,6 +149,8 @@ public final class MainActivity extends Activity {
     private Switch hapticsSwitch;
     private Switch shakeSwitch;
     private Switch reducedTextureSwitch;
+    private SeekBar albedoSeekBar;
+    private TextView albedoValueLabel;
 
     private Page currentPage = Page.CHATS;
     private ConnectionState connectionState = ConnectionState.DISCONNECTED;
@@ -183,9 +188,11 @@ public final class MainActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(MothMarketTheme.BG);
         backgroundView = new TextureBackgroundView(this);
-        backgroundView.setReducedTexture(true);
-        backgroundView.setAlpha(0f);
+        backgroundView.setBaseColor(MothMarketTheme.BG);
+        backgroundView.setReducedTexture(false);
+        backgroundView.setAlpha(1f);
         root.addView(backgroundView, matchFrame());
+        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateReflectionLights());
 
         FrameLayout content = new FrameLayout(this);
         FrameLayout.LayoutParams contentParams = matchFrame();
@@ -479,6 +486,33 @@ public final class MainActivity extends Activity {
         });
         sensoryPanel.addView(reducedTextureSwitch);
 
+        sensoryPanel.addView(sectionHeading("Moth albedo"), topMargin(dp(14)));
+        albedoValueLabel = supportingValue("Reflection strength 1.00");
+        sensoryPanel.addView(albedoValueLabel, topMargin(dp(4)));
+        albedoSeekBar = new SeekBar(this);
+        albedoSeekBar.setMax(750); // 0.00 .. 7.50
+        albedoSeekBar.setProgress(300); // default 3.00
+        albedoSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                float strength = progress / 100f;
+                backgroundView.setAlbedoStrength(strength);
+                albedoValueLabel.setText(String.format(
+                        Locale.US, "Reflection strength %.2f%s",
+                        strength,
+                        backgroundView.usesRuntimeShader() ? "" : " (fallback)"));
+                if (fromUser && !suppressPreferenceCallbacks) {
+                    persistSensoryPreferences();
+                }
+            }
+
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {
+                updateReflectionLights();
+            }
+        });
+        sensoryPanel.addView(albedoSeekBar, topMargin(dp(6)));
+
         sensorySummary = supportingValue("");
         sensorySummary.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         sensoryPanel.addView(sensorySummary, topMargin(dp(8)));
@@ -614,6 +648,67 @@ public final class MainActivity extends Activity {
         selectNavTab(flowsTab, page == Page.FLOWS);
         View bump = page == Page.FLOWS ? flowsTab : chatsTab;
         textureEngine.playBoundaryBump(bump);
+        bump.post(this::updateReflectionLights);
+    }
+
+    /**
+     * Catch-lights into the moth albedo map: nav icons (point 0–1) plus
+     * rounded-rect ring emitters around unread chat cards. Cue uses point 2.
+     */
+    private void updateReflectionLights() {
+        if (backgroundView == null || chatsTab == null || flowsTab == null) return;
+        int[] rootLoc = new int[2];
+        int[] loc = new int[2];
+        backgroundView.getLocationOnScreen(rootLoc);
+
+        chatsTab.getLocationOnScreen(loc);
+        float chatX = loc[0] - rootLoc[0] + chatsTab.getWidth() * 0.5f;
+        float chatY = loc[1] - rootLoc[1] + chatsTab.getHeight() * 0.35f;
+        boolean chatLit = currentPage == Page.CHATS || currentPage == Page.CHAT;
+        backgroundView.setLight(0, chatX, chatY,
+                Color.parseColor("#2A7772"),
+                dp(chatLit ? 360 : 220),
+                chatLit ? 0.95f : 0.35f);
+
+        flowsTab.getLocationOnScreen(loc);
+        float flowX = loc[0] - rootLoc[0] + flowsTab.getWidth() * 0.5f;
+        float flowY = loc[1] - rootLoc[1] + flowsTab.getHeight() * 0.35f;
+        boolean flowLit = currentPage == Page.FLOWS;
+        backgroundView.setLight(1, flowX, flowY,
+                Color.parseColor("#6B7585"),
+                dp(flowLit ? 380 : 230),
+                flowLit ? 1.0f : 0.3f);
+
+        backgroundView.clearRings();
+        if (!chatLit) return;
+
+        int slot = 0;
+        int viewH = backgroundView.getHeight();
+        float corner = dp(30);
+        // Soft outward reach so catch settles into the map, not a hard ring fringe.
+        float reach = dp(36);
+        for (int i = 0; i < glowRingViews.size() && slot < 3; i++) {
+            View card = glowRingViews.get(i);
+            if (card.getWindowToken() == null || !card.isShown()
+                    || card.getWidth() <= 0 || card.getHeight() <= 0) {
+                continue;
+            }
+            card.getLocationOnScreen(loc);
+            float x = loc[0] - rootLoc[0] + card.getWidth() * 0.5f;
+            float y = loc[1] - rootLoc[1] + card.getHeight() * 0.5f;
+            if (y < -card.getHeight() || y > viewH + card.getHeight()) continue;
+
+            backgroundView.setRing(slot,
+                    x, y,
+                    card.getWidth() * 0.5f,
+                    card.getHeight() * 0.5f,
+                    corner,
+                    reach,
+                    glowRingColors.get(i),
+                    0.45f,
+                    3.2f);
+            slot++;
+        }
     }
 
     private void selectNavTab(LinearLayout tab, boolean selected) {
@@ -962,6 +1057,8 @@ public final class MainActivity extends Activity {
 
     private void filterChatList(String query) {
         if (chatListContainer == null) return;
+        glowRingViews.clear();
+        glowRingColors.clear();
         chatListContainer.removeAllViews();
         String needle = query == null ? "" : query.trim().toLowerCase(Locale.US);
         List<PersonTimeline> visible = new ArrayList<>();
@@ -977,6 +1074,7 @@ public final class MainActivity extends Activity {
             chatsEmpty.setText(needle.isEmpty() ? "No conversations yet." : "No matches.");
             chatListContainer.addView(chatsEmpty, matchWrap());
             chatsEmpty.setVisibility(View.VISIBLE);
+            updateReflectionLights();
             return;
         }
         chatsEmpty.setVisibility(View.GONE);
@@ -995,6 +1093,7 @@ public final class MainActivity extends Activity {
             params.setMargins(avatarOverhang, 0, 0, dp(14));
             chatListContainer.addView(slot, params);
         }
+        chatListContainer.post(this::updateReflectionLights);
     }
 
     private View personRow(PersonTimeline person) {
@@ -1027,8 +1126,10 @@ public final class MainActivity extends Activity {
                     ? person.latestAppLabel : person.latestUnreadAppLabel)
                 : null;
         if (glowPackage != null) {
-            MothMarketTheme.applyGlow(card, this,
-                    MothMarketTheme.glowForPackage(glowPackage, glowLabel));
+            int glowColor = MothMarketTheme.glowForPackage(glowPackage, glowLabel);
+            MothMarketTheme.applyGlow(card, this, glowColor);
+            glowRingViews.add(card);
+            glowRingColors.add(glowColor);
         } else {
             card.setBackground(MothMarketTheme.quietCard(this));
             card.setElevation(dp(2));
@@ -1856,10 +1957,27 @@ public final class MainActivity extends Activity {
         boolean reduced = preferences.getBoolean("reduced_texture", false);
         reducedTextureSwitch.setChecked(reduced);
         backgroundView.setReducedTexture(reduced);
+        float albedo = preferences.getFloat("albedo_strength", TextureBackgroundView.DEFAULT_ALBEDO_STRENGTH);
+        // Prior builds defaulted to 1.0 — treat that as unset and use the new 3× default.
+        if (!preferences.contains("albedo_strength") || albedo <= 1.001f) {
+            albedo = TextureBackgroundView.DEFAULT_ALBEDO_STRENGTH;
+        }
+        albedo = Math.max(0f, Math.min(TextureBackgroundView.MAX_ALBEDO_STRENGTH, albedo));
+        if (albedoSeekBar != null) {
+            albedoSeekBar.setProgress(Math.round(albedo * 100f));
+        }
+        backgroundView.setAlbedoStrength(albedo);
+        if (albedoValueLabel != null) {
+            albedoValueLabel.setText(String.format(
+                    Locale.US, "Reflection strength %.2f%s",
+                    albedo,
+                    backgroundView.usesRuntimeShader() ? "" : " (fallback)"));
+        }
         eyeView.setReducedMotion(reduced || profile.reducesContinuousTexture());
         profileButton.setText("Profile: " + profile.displayName());
         suppressPreferenceCallbacks = false;
         updateSensorySummary();
+        backgroundView.post(this::updateReflectionLights);
     }
 
     private void persistSensoryPreferences() {
@@ -1869,6 +1987,7 @@ public final class MainActivity extends Activity {
                 .putBoolean("haptics", textureEngine.isHapticsEnabled())
                 .putBoolean("shake", shakeSwitch.isChecked())
                 .putBoolean("reduced_texture", reducedTextureSwitch.isChecked())
+                .putFloat("albedo_strength", backgroundView.getAlbedoStrength())
                 .apply();
     }
 
@@ -1902,13 +2021,18 @@ public final class MainActivity extends Activity {
     private FrameLayout scrollPage(LinearLayout content) {
         FrameLayout frame = new FrameLayout(this);
         frame.setClipChildren(false);
+        frame.setBackgroundColor(TRANSPARENT);
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
         scroll.setClipChildren(false);
+        scroll.setBackgroundColor(TRANSPARENT);
         scroll.setPadding(dp(4), dp(4), dp(4), dp(20));
         scroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
-        textureEngine.attachScrollTexture(scroll, backgroundView::setScrollOffset);
+        textureEngine.attachScrollTexture(scroll, scrollY -> {
+            backgroundView.setScrollOffset(scrollY);
+            updateReflectionLights();
+        });
         scroll.addView(content, new ScrollView.LayoutParams(-1, -2));
         frame.addView(scroll, matchFrame());
         return frame;
@@ -1918,6 +2042,7 @@ public final class MainActivity extends Activity {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(0, 0, 0, dp(18));
+        layout.setBackgroundColor(TRANSPARENT);
         return layout;
     }
 

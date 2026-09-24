@@ -16,6 +16,7 @@ import com.textureflow.actions.LiveActionRegistry;
 import com.textureflow.actions.NotificationControl;
 import com.textureflow.bank.BankEntry;
 import com.textureflow.bank.BankKey;
+import com.textureflow.bank.BankState;
 import com.textureflow.data.EventWriteResult;
 import com.textureflow.data.ListenerHealthStore;
 import com.textureflow.data.StoredNotificationEvent;
@@ -258,16 +259,23 @@ public final class TextureNotificationListenerService extends NotificationListen
             if (normalized.getCapabilities().contains("REPLY")) {
                 try {
                     String peer = peerKey(normalized);
+                    BankKey key = new BankKey(peer, normalized.getPackageName());
                     BankEntry banked = new BankEntry(
-                            new BankKey(peer, normalized.getPackageName()),
+                            key,
                             stored.getEventId(),
                             stored.getNotificationKey(),
                             stored.getSenderName(),
                             stored.getConversationLabel(),
                             stored.getBody(),
                             now);
-                    // adoptAndArm isolates snooze failures; never mark health failed here.
-                    runtime.bank().adoptAndArm(this, banked);
+                    BankEntry prior = runtime.bank().peek(key);
+                    if (prior != null && prior.state() == BankState.WAKING) {
+                        // Cold-start window: do not re-snooze the handle we just woke.
+                        runtime.bank().adoptAfterWake(banked);
+                    } else {
+                        // adoptAndArm isolates snooze failures; never mark health failed here.
+                        runtime.bank().adoptAndArm(this, banked);
+                    }
                 } catch (RuntimeException bankFailure) {
                     // Bank persistence must never poison listener health or drop the notification.
                 }

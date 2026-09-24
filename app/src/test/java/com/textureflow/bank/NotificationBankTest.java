@@ -51,6 +51,27 @@ public final class NotificationBankTest {
     }
 
     @Test
+    public void requestWakeFailureDoesNotStickInWaking() {
+        BankEntry entry = sample("evt-2b", "nkey-2b");
+        bank.adoptAndArm(control, entry);
+        control.failNext = true;
+        assertFalse(bank.requestWake(control, entry.key()));
+        assertEquals(BankState.ARMED_SNOOZED, bank.peek(entry.key()).state());
+    }
+
+    @Test
+    public void adoptAfterWakeSkipsReArmAndGoesLive() {
+        BankEntry entry = sample("evt-2c", "nkey-2c");
+        bank.adoptAndArm(control, entry);
+        assertTrue(bank.requestWake(control, entry.key()));
+        control.lastDurationMs = -1L;
+        BankEntry live = bank.adoptAfterWake(sample("evt-2c", "nkey-2c-live"));
+        assertEquals(BankState.LIVE, live.state());
+        assertEquals(-1L, control.lastDurationMs);
+        assertEquals(BankState.LIVE, bank.peek(entry.key()).state());
+    }
+
+    @Test
     public void onLiveHandleDrainsWhenOutboxPending() {
         BankEntry entry = sample("evt-3", "nkey-3");
         bank.adopt(entry);
@@ -93,10 +114,15 @@ public final class NotificationBankTest {
 
     private static final class RecordingControl implements NotificationControl {
         long lastDurationMs;
+        boolean failNext;
 
         @Override public boolean isAvailable() { return true; }
         @Override public void dismiss(String notificationKey) {}
         @Override public void snooze(String notificationKey, long durationMs) {
+            if (failNext) {
+                failNext = false;
+                throw new IllegalStateException("snooze failed");
+            }
             lastDurationMs = durationMs;
         }
     }

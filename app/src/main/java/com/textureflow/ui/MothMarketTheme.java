@@ -16,10 +16,10 @@ public final class MothMarketTheme {
     public static final int LOGO_WELL = Color.parseColor("#D8DEE8");
     public static final int INK = Color.parseColor("#1A1F27");
     public static final int MUTED = Color.parseColor("#6B7585");
-    public static final int SEARCH = Color.parseColor("#D3DAE5");
+    public static final int SEARCH = Color.argb(168, 0xD3, 0xDA, 0xE5);
     public static final int CHIP = Color.parseColor("#E2E7EF");
-    public static final int NAV = Color.parseColor("#D0D7E1");
-    public static final int NAV_SELECTED = Color.parseColor("#E9EEF5");
+    public static final int NAV = Color.argb(168, 0xD0, 0xD7, 0xE1);
+    public static final int NAV_SELECTED = Color.argb(200, 0xE9, 0xEE, 0xF5);
     public static final int PLACEHOLDER = Color.parseColor("#D9E0EA");
     public static final int BUBBLE_IN = Color.parseColor("#FFFFFF");
     public static final int BUBBLE_OUT = Color.parseColor("#DCF8C6");
