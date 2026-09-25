@@ -1,10 +1,10 @@
 package com.textureflow.ui;
 
 /** Pure parsing helpers for bounded local voice commands. */
-final class VoiceCommandParser {
+public final class VoiceCommandParser {
     private VoiceCommandParser() {}
 
-    static String replyDraft(String spoken, String normalized) {
+    public static String replyDraft(String spoken, String normalized) {
         String[] trailingCommands = {
                 ", reply with that", " reply with that", ", send that", " send that",
                 ", tell them that", " tell them that"
