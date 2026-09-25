@@ -22,6 +22,7 @@ Each folder is one job. Every folder has its own `README.md`.
 | **`policy/`** | Safety rules (“may we do this?”) | `CommandPolicy.java` |
 | **`connection/`** | Local stub Core by default; optional Convex | `ConnectionMode.java` |
 | **`texture/`** | Sounds + haptics + sensory cues | `TextureCueScheduler.java` |
+| **`intelligence/`** | On-device attention contracts (frozen `api/`) | `intelligence/README.md` |
 
 ## Other important paths
 
@@ -60,6 +61,7 @@ From the repo root (needs Android SDK / Android Studio JDK):
 ```sh
 ./gradlew assembleDebug
 ./gradlew :app:installDebug   # with an emulator or device attached
+./tools/test-android.sh       # unit tests; finds Android Studio's JDK if JAVA_HOME is unset
 ```
 
 APK output: `app/build/outputs/apk/debug/app-debug.apk`

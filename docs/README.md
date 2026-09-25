@@ -10,6 +10,8 @@ Longer explanations. If you are new, start with:
 
 | File | Topic |
 |------|--------|
+| `INTELLIGENCE_PRODUCTION.md` | Production on-device intelligence plan (proposal) |
+| `BUILD_PLAN.md` | Work breakdown for sub-agents building the intelligence engine |
 | `ANDROID_INTEGRATION.md` | Notification listener on Android |
 | `ANDROID_CONNECTION.md` | Phone ↔ Convex connection |
 | `THREAT_MODEL.md` | Security |

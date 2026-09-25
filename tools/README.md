@@ -14,6 +14,7 @@ You usually run these from the repo root with Node.
 | `audit-secrets.mjs` | Looks for accidental secrets |
 | `validate-contracts/` | Contract checks |
 | `run-rehearsal/` | Rehearsal / demo flow helpers |
+| `test-android.sh` | Android unit tests (`JAVA_HOME` → Android Studio JBR if unset) |
 
 See also root `package.json` scripts (`npm run check`, etc.).
 

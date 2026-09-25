@@ -38,6 +38,17 @@ docs/             architecture notes (partly historical)
 | **`tools/`** | Scripts to test and demo | Running checks, smoke tests |
 | **`docs/`** | Longer explanations | Deep reading after this map |
 
+## How to run tests
+
+From the repo root:
+
+```sh
+npm run check                 # TypeScript contracts, rehearsal, bridge, intelligence
+./tools/test-android.sh       # Android unit tests (sets JAVA_HOME to Android Studio if needed)
+```
+
+CI runs both on every push to `main` and on pull requests (`.github/workflows/ci.yml`).
+
 ## Suggested reading order
 
 1. This file (`START_HERE.md`)

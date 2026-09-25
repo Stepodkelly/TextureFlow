@@ -21,6 +21,22 @@ public final class TextureFlowDatabase extends SQLiteOpenHelper {
 
     @Override
     public void onCreate(SQLiteDatabase db) {
+        createV1Schema(db);
+    }
+
+    @Override
+    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        int version = oldVersion;
+        if (version < 2 && newVersion >= 2) {
+            migrateTo2(db);
+            version = 2;
+        }
+        if (version != newVersion) {
+            throw new IllegalStateException("No database migration exists from " + oldVersion + " to " + newVersion);
+        }
+    }
+
+    private static void createV1Schema(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE notification_events ("
                 + "event_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, notification_key TEXT NOT NULL, "
                 + "package_name TEXT NOT NULL, app_label TEXT NOT NULL, sender_name TEXT NOT NULL, "
@@ -56,9 +72,8 @@ public final class TextureFlowDatabase extends SQLiteOpenHelper {
                 + "VALUES(1, 0, 0, 0, 0, 0, 0, NULL)");
     }
 
-    @Override
-    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        throw new IllegalStateException("No database migration exists from " + oldVersion + " to " + newVersion);
+    /** Reserved for Stream C. Must stay a no-op while DATABASE_VERSION is 1. */
+    static void migrateTo2(SQLiteDatabase db) {
     }
 
     static void enqueue(
