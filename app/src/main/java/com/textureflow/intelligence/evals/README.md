@@ -6,6 +6,5 @@ Eval seam for the shared triage case set in `shared/evals/triage-cases-v2.json`.
 |------|------|
 | `TriageEvalTarget` | Tiny interface the JUnit runner scores. No Android imports. |
 
-`DeterministicStubTarget` lives in tests and approximates `intelligence/src/priority.ts`
-so the harness compiles before Stream A merges. After A lands, the runner should
-wrap `DeterministicTriage` instead of the stub.
+`DeterministicTriageTarget` wraps Stream A’s scorer. `DeterministicStubTarget`
+stays in tests as a regression check against the pre-A regex copy.

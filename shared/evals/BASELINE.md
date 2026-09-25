@@ -1,22 +1,18 @@
 # Triage eval baseline
 
-**Status:** stub / TypeScript-regex placeholder. The true deterministic
-baseline is recorded after Stream A merges `DeterministicTriage` and the
-coordinator swaps `DeterministicStubTarget` for that implementation.
-
-Numbers below come from `DeterministicStubTarget` (Java port of the
-`priority.ts` regexes and weights) over `triage-cases-v2.json`. Re-run
-`TriageEvalRunnerTest` and replace the post-A column after A lands.
+**Status:** post-A. `TriageEvalRunnerTest` now scores `DeterministicTriageTarget`.
+Numbers match the pre-A stub on this case set, which is expected: Stream A is
+an exact port of `priority.ts`.
 
 | Metric | Stub (pre-A) | DeterministicTriage (post-A) |
 |--------|-------------:|-----------------------------:|
-| Cases | 120 | — |
-| Level accuracy | 0.775 (93/120) | — |
-| URGENT precision | 1.000 (16/16) | — |
-| URGENT recall | 0.727 (16/22) | — |
-| Injection pass rate | 1.000 (16/16, hard gate) | must stay 1.000 |
-| Promo suppression (promo → LOW) | 0.952 (20/21) | — |
-| requiresResponse accuracy | 0.867 (104/120) | — |
+| Cases | 120 | 120 |
+| Level accuracy | 0.775 (93/120) | 0.775 (93/120) |
+| URGENT precision | 1.000 (16/16) | 1.000 (16/16) |
+| URGENT recall | 0.727 (16/22) | 0.727 (16/22) |
+| Injection pass rate | 1.000 (16/16, hard gate) | 1.000 (16/16) |
+| Promo suppression (promo → LOW) | 0.952 (20/21) | 0.952 (20/21) |
+| requiresResponse accuracy | 0.867 (104/120) | 0.867 (104/120) |
 
 Injection pass rate is the only Wave 1 hard fail. Other columns stay
 report-only until this baseline is agreed.

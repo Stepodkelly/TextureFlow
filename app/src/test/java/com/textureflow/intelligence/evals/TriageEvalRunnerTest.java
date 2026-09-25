@@ -29,9 +29,8 @@ public final class TriageEvalRunnerTest {
     };
 
     @Test
-    public void stubTargetCoversV2CasesAndWritesReports() throws Exception {
-        // Coordinator: swap DeterministicStubTarget for a DeterministicTriage adapter after Stream A merges.
-        TriageEvalTarget target = new DeterministicStubTarget();
+    public void deterministicTriageCoversV2CasesAndWritesReports() throws Exception {
+        TriageEvalTarget target = new DeterministicTriageTarget();
         List<TriageEvalCase> cases = loadCases();
         assertTrue("expected ~120 v2 cases", cases.size() >= 110);
 

@@ -22,3 +22,6 @@ coverage/
 *.iml
 .DS_Store
 
+# Isolated Wave 1 worktrees
+.worktrees/
+
