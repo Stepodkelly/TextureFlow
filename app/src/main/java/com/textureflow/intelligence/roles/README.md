@@ -1,4 +1,4 @@
-# `intelligence/roles/` — council roles (Stream H)
+# `intelligence/roles/` — council roles (Stream H + K)
 
 Pure Java. Inject a `ModelPort` (usually `ModelLifecycle`). No `android.*`.
 
@@ -7,24 +7,32 @@ Pure Java. Inject a `ModelPort` (usually `ModelLifecycle`). No `android.*`.
 | `TriageRole` | One structured call → `triage.v1.txt` → SchemaValidator → PolicyGate |
 | `TriageRoleRequest` | Shielded context + deterministic result + event versions |
 | `TriageRoleResult` | Classification; `hasDraft()` is always false |
+| `SummarizerRole` | `summary.v1.txt` → `SUMMARY_V1` → PolicyGate; fallback concatenates newest shielded bodies ≤ 240 chars |
+| `DrafterRole` | Literal-words-first (`draft.v1.txt` → `DRAFT_V1` or `DRAFTER`); injection never calls the model |
+| `SkepticRole` | **Not added.** Draft evals do not yet justify it. PolicyGate already drops injection drafts. |
 
-## How Stream G should call `TriageRole`
+## How the engine should call these
 
 ```text
-ModelLifecycle life = ModelPorts.lifecycle(context);   // NoModelPort if file missing
-String prompt = PromptAssets.loadTriage(context);
-TriageRole triage = new TriageRole(life, prompt);
-
-// After A0 deterministic + EscalationRules:
-if (life.isThermalOrBatteryBlocked() || !life.isAvailable()) {
-    // A5 — publish deterministic, source=DETERMINISTIC_FALLBACK
-} else if (rule is A3 or A4) {
-    TriageRoleResult out = triage.classify(new TriageRoleRequest(shielded, det));
+if (!(model instanceof NoModelPort) && tier != T0) {
+    SummarizerRoleResult out = new SummarizerRole(model).summarize(
+            new SummarizerRoleRequest(shielded, det));
     // out.getSource() is ON_DEVICE_MODEL or DETERMINISTIC_FALLBACK
-    // out.hasDraft() is always false; injection still classifies
+    // record RoleRunRecord on the existing tick id
+
+    DrafterRoleResult draft = new DrafterRole(model).draft(
+            new DrafterRoleRequest(shielded, userRequest, userDraftText, tone));
+    // complete user words are returned verbatim; generate() is not called
+    // injection → user's literal words or empty; no model draft
 }
-life.unloadIfIdle(now);          // 300 s
-// from Activity: life.onTrimMemory(level);
+// any exception → deterministic fallback (summary concat / user's words)
 ```
 
-Lazy load happens on the first `classify` → `generate`. Do not call `load()` on every notification.
+`requestSummary` / `requestDraft` stay on `TickScheduler` (non-blocking).
+Draft ticks do not yet exist — skip ledger role-run writes rather than inventing a tick.
+
+Prompts ship in `assets/intelligence/prompts/`. `PromptAssets` still only loads
+`triage.v1.txt`; Stream L should add `summary.v1.txt` / `draft.v1.txt` loaders.
+The roles also expose `DEFAULT_PROMPT` so the engine stays Android-free.
+
+Lazy load happens on the first `generate`. Do not call `load()` on every request.

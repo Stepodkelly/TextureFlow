@@ -8,6 +8,7 @@ import com.textureflow.intelligence.api.AttentionLevel;
 import com.textureflow.intelligence.api.AttentionListener;
 import com.textureflow.intelligence.api.Callback;
 import com.textureflow.intelligence.api.CapabilityProfile;
+import com.textureflow.intelligence.api.CapabilityTier;
 import com.textureflow.intelligence.api.DraftQuery;
 import com.textureflow.intelligence.api.EventSignal;
 import com.textureflow.intelligence.api.IntelligenceIntent;
@@ -35,6 +36,12 @@ import com.textureflow.intelligence.policy.PolicyVerdict;
 import com.textureflow.intelligence.policy.ProposalBinding;
 import com.textureflow.intelligence.policy.SchemaName;
 import com.textureflow.intelligence.policy.SchemaValidator;
+import com.textureflow.intelligence.roles.DrafterRole;
+import com.textureflow.intelligence.roles.DrafterRoleRequest;
+import com.textureflow.intelligence.roles.DrafterRoleResult;
+import com.textureflow.intelligence.roles.SummarizerRole;
+import com.textureflow.intelligence.roles.SummarizerRoleRequest;
+import com.textureflow.intelligence.roles.SummarizerRoleResult;
 import com.textureflow.intelligence.shield.ContextShield;
 import com.textureflow.intelligence.shield.ShieldEvent;
 import com.textureflow.intelligence.shield.ShieldRequest;
@@ -395,18 +402,69 @@ public final class DefaultAttentionEngine implements AttentionEngine, AutoClosea
         EscalationDecision decision = EscalationRules.decide(
                 deterministic.getFeatures(), TickTrigger.USER_QUERY, capability);
         List<String> eventIds = new ArrayList<>();
-        StringBuilder text = new StringBuilder();
         for (StoredEvent event : live) {
             eventIds.add(event.getEventId());
-            if (text.length() > 0) {
-                text.append(' ');
-            }
-            text.append(event.getBody());
         }
-        String summary = text.length() == 0
-                ? "No recent messages."
-                : trim(text.toString(), 240);
-        AssessmentSource source = decision.source();
+        ShieldedContext shielded = shield.shield(new ShieldRequest(
+                query.getPersonId(),
+                personDisplayName(identity, lead, query.getPersonId()),
+                relationship(identity),
+                lead == null ? "" : lead.getAppLabel(),
+                query.getUserRequest(),
+                toShieldEvents(live),
+                now));
+        SummarizerRoleResult roleResult = null;
+        if (shouldUseCouncilRole(query.isForceModel())) {
+            try {
+                SummarizerRole role = new SummarizerRole(model, SummarizerRole.DEFAULT_PROMPT);
+                roleResult = role.summarize(new SummarizerRoleRequest(
+                        shielded,
+                        deterministic,
+                        lead == null ? StoredEvent.STATUS_ACTIVE : lead.getStatus(),
+                        lead == null ? null : lead.getEventVersion(),
+                        lead == null ? null : currentVersion(lead),
+                        deterministic.getAssessment().getScore()));
+                recordSummaryRoleRun(tickId, roleResult);
+            } catch (Exception ignored) {
+                roleResult = null;
+            }
+        }
+        String summary;
+        double score;
+        AttentionLevel level;
+        String reason;
+        IntelligenceIntent intent;
+        boolean requiresResponse;
+        List<String> ambiguities;
+        AssessmentSource source;
+        String modelFailure;
+        if (roleResult != null && !roleResult.usedFallback()) {
+            summary = roleResult.getSummary();
+            score = roleResult.getScore();
+            level = applyCap(roleResult.getLevel(), decision);
+            reason = roleResult.getReason();
+            intent = roleResult.getIntent();
+            requiresResponse = roleResult.isRequiresResponse();
+            ambiguities = roleResult.getAmbiguities();
+            source = roleResult.getSource();
+            modelFailure = null;
+        } else {
+            summary = roleResult != null
+                    ? roleResult.getSummary()
+                    : SummarizerRole.fallbackSummary(shielded);
+            score = deterministic.getAssessment().getScore();
+            level = applyCap(deterministic.getAssessment().getLevel(), decision);
+            reason = deterministic.getAssessment().getReason();
+            intent = intentFor(deterministic.getFeatures());
+            requiresResponse = deterministic.getFeatures().getDirectRequest() >= 0.75d;
+            ambiguities = roleResult == null ? Collections.emptyList() : roleResult.getAmbiguities();
+            source = roleResult != null
+                    ? roleResult.getSource()
+                    : decision.source();
+            modelFailure = roleResult != null || decision.getRule() == EscalationDecision.Rule.A5
+                    ? "model_unavailable"
+                    : null;
+        }
         ledger.recordTick(new TickRecord(
                 tickId,
                 TickTrigger.USER_QUERY,
@@ -419,16 +477,16 @@ public final class DefaultAttentionEngine implements AttentionEngine, AutoClosea
                 source));
         return new SummaryResult(
                 summary,
-                deterministic.getAssessment().getScore(),
-                applyCap(deterministic.getAssessment().getLevel(), decision),
-                deterministic.getAssessment().getReason(),
-                intentFor(deterministic.getFeatures()),
-                deterministic.getFeatures().getDirectRequest() >= 0.75d,
-                Collections.emptyList(),
+                score,
+                level,
+                reason,
+                intent,
+                requiresResponse,
+                ambiguities,
                 source,
                 eventIds,
-                deterministic.getFeatures().isMaliciousInstruction(),
-                decision.getRule() == EscalationDecision.Rule.A5 ? "model_unavailable" : null);
+                deterministic.getFeatures().isMaliciousInstruction() || shielded.isInjectionFlagged(),
+                modelFailure);
     }
 
     private ProposalDraft buildDraft(DraftQuery query) {
@@ -442,18 +500,61 @@ public final class DefaultAttentionEngine implements AttentionEngine, AutoClosea
                 stored.toTriageEvent(), identity, now);
         EscalationDecision decision = EscalationRules.decide(
                 deterministic.getFeatures(), TickTrigger.DRAFT_REQUEST, capability);
-        if (decision.forbidDrafts()) {
-            throw new IllegalStateException("Drafts are forbidden for flagged events.");
-        }
         String reply = query.getUserDraftText().isEmpty()
                 ? query.getUserRequest()
                 : query.getUserDraftText();
+        ReplyTone tone = query.getPreferredTone() == null ? ReplyTone.NEUTRAL : query.getPreferredTone();
+        AssessmentSource source = AssessmentSource.DETERMINISTIC;
+        double confidence = deterministic.getAssessment().getScore();
+        List<String> ambiguities = Collections.emptyList();
+        List<StoredEvent> live = events.getLiveForPerson(stored.getPersonId());
+        if (live.isEmpty()) {
+            live = Collections.singletonList(stored);
+        }
+        ShieldedContext shielded = shield.shield(new ShieldRequest(
+                stored.getPersonId(),
+                personDisplayName(identity, stored, stored.getSenderDisplayName()),
+                relationship(identity),
+                stored.getAppLabel(),
+                query.getUserRequest(),
+                toShieldEvents(live),
+                now));
+        boolean injection = decision.forbidDrafts()
+                || shielded.isInjectionFlagged()
+                || deterministic.getFeatures().isMaliciousInstruction();
+        if (shouldUseCouncilRole(false)) {
+            try {
+                DrafterRole role = new DrafterRole(model, DrafterRole.DEFAULT_PROMPT);
+                DrafterRoleResult roleResult = role.draft(new DrafterRoleRequest(
+                        shielded,
+                        query.getUserRequest(),
+                        query.getUserDraftText(),
+                        tone,
+                        stored.getSenderDisplayName(),
+                        stored.getPackageName(),
+                        stored.getStatus(),
+                        stored.getEventVersion(),
+                        currentVersion(stored),
+                        deterministic.getAssessment().getScore(),
+                        injection));
+                reply = roleResult.getReplyText();
+                if (roleResult.getTone() != null) {
+                    tone = roleResult.getTone();
+                }
+                source = roleResult.getSource();
+                confidence = roleResult.getConfidence();
+                ambiguities = roleResult.getAmbiguities();
+            } catch (Exception ignored) {
+                source = AssessmentSource.DETERMINISTIC_FALLBACK;
+            }
+        } else if (injection) {
+            source = AssessmentSource.DETERMINISTIC_FALLBACK;
+        }
         if (reply.isEmpty()) {
             throw new IllegalStateException("A draft needs the user's words.");
         }
         String payloadHash = ProposalBinding.sha256Utf8(reply);
         String proposalId = "prop_" + UUID.randomUUID();
-        ReplyTone tone = query.getPreferredTone() == null ? ReplyTone.NEUTRAL : query.getPreferredTone();
         ProposalDraft draft = new ProposalDraft(
                 proposalId,
                 stored.getEventId(),
@@ -465,14 +566,50 @@ public final class DefaultAttentionEngine implements AttentionEngine, AutoClosea
                 reply,
                 tone,
                 "Reply to " + stored.getSenderDisplayName() + ": " + reply,
-                AssessmentSource.DETERMINISTIC,
-                deterministic.getAssessment().getScore(),
-                Collections.emptyList(),
+                source,
+                confidence,
+                ambiguities,
                 payloadHash,
                 now + 15 * 60_000L);
         ledger.upsertProposal(ProposalRecord.from(draft, ProposalStatus.OPEN, now));
         trackProposal(draft);
         return draft;
+    }
+
+    private boolean shouldUseCouncilRole(boolean forceModel) {
+        if (model instanceof NoModelPort) {
+            return false;
+        }
+        if (capability.getTier() != CapabilityTier.T0) {
+            return true;
+        }
+        return forceModel;
+    }
+
+    private void recordSummaryRoleRun(String tickId, SummarizerRoleResult result) {
+        if (tickId == null || tickId.isEmpty() || result == null) {
+            return;
+        }
+        ledger.recordRoleRun(new RoleRunRecord(
+                tickId,
+                CouncilRole.SUMMARIZER,
+                SummarizerRoleResult.PROMPT_VERSION,
+                result.getInputTokens(),
+                result.getOutputTokens(),
+                result.getWallMs(),
+                result.isSchemaValid(),
+                Collections.emptyList()));
+    }
+
+    private static String personDisplayName(
+            IdentityResolution identity, StoredEvent lead, String fallback) {
+        if (identity instanceof ResolvedIdentity) {
+            return ((ResolvedIdentity) identity).getDisplayName();
+        }
+        if (lead != null && !lead.getSenderDisplayName().isEmpty()) {
+            return lead.getSenderDisplayName();
+        }
+        return fallback == null ? "" : fallback;
     }
 
     private void invalidateIfVersionChanged(EventSignal signal) {
