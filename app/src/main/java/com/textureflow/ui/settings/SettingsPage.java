@@ -36,7 +36,7 @@ import com.textureflow.ui.nav.Page;
 import java.util.Locale;
 
 public final class SettingsPage {
-    private static final String PREFERENCES = "texture_surface_preferences";
+    private static final String PREFERENCES = IntelligencePreferences.PREFERENCES;
 
     private final MainSurface surface;
     private FrameLayout settingsPage;
@@ -57,9 +57,11 @@ public final class SettingsPage {
     private TextView albedoValueLabel;
     private boolean suppressPreferenceCallbacks;
     private boolean coreStartIssued;
+    private final IntelligenceSection intelligence;
 
     public SettingsPage(MainSurface surface) {
         this.surface = surface;
+        this.intelligence = new IntelligenceSection(surface);
     }
 
     public FrameLayout page() {
@@ -75,6 +77,7 @@ public final class SettingsPage {
     public TextView receiptDetail() { return receiptDetail; }
     public Switch shakeSwitch() { return shakeSwitch; }
     public Switch reducedTextureSwitch() { return reducedTextureSwitch; }
+    public boolean isIntelligenceEnabled() { return intelligence.isEnabled(); }
 
     public FrameLayout build() {
         UiKit kit = surface.kit;
@@ -199,6 +202,7 @@ public final class SettingsPage {
         receiptDetail = kit.supportingValue("Only Android-confirmed results appear here.");
         receiptPanel.addView(receiptDetail, kit.topMargin(kit.dp(6)));
         content.addView(receiptPanel, kit.wideWithTop(kit.dp(12)));
+        content.addView(intelligence.build(kit), kit.wideWithTop(kit.dp(12)));
         settingsPage = kit.scrollPage(content);
         return settingsPage;
     }
@@ -263,6 +267,7 @@ public final class SettingsPage {
         profileButton.setText("Profile: " + profile.displayName());
         suppressPreferenceCallbacks = false;
         updateSensorySummary();
+        intelligence.restore();
         surface.backgroundView.post(surface::updateReflectionLights);
     }
 
@@ -311,6 +316,7 @@ public final class SettingsPage {
         if (!granted) {
             renderConnection(MainActivity.ConnectionState.DISCONNECTED, "Notification access required");
             surface.conversation.clearAttention();
+            intelligence.onHostRefresh();
             return;
         }
 
@@ -328,6 +334,7 @@ public final class SettingsPage {
             connectionStatus.setText("Local stub · Convex and VoiceOS offline");
             sessionStatus.setText("On-device only");
         }
+        intelligence.onHostRefresh();
         surface.activity.refreshLocalSurface();
     }
 
