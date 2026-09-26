@@ -33,6 +33,7 @@ import com.textureflow.intelligence.model.CapabilityProbe;
 import com.textureflow.intelligence.model.ModelLifecycle;
 import com.textureflow.intelligence.model.ModelPorts;
 import com.textureflow.policy.CommandPolicy;
+import com.textureflow.ui.settings.IntelligencePreferences;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -128,10 +129,15 @@ public final class NotificationRuntime {
 
     /** Never waits for a model. {@link AttentionEngine#onEvent} only enqueues. */
     public void enqueueAttention(EventSignal signal) {
-        if (signal == null) {
+        if (!shouldEnqueue(signal, IntelligencePreferences.isEnabled(context))) {
             return;
         }
         attention().onEvent(signal);
+    }
+
+    /** Capture ticks stay off when Settings intelligence mode is off. */
+    static boolean shouldEnqueue(EventSignal signal, boolean intelligenceEnabled) {
+        return signal != null && intelligenceEnabled;
     }
 
     static EventSignal attentionSignal(StoredNotificationEvent event, EventSignal.Kind kind) {

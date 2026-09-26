@@ -19,6 +19,7 @@ on the chat list without editing a 2k-line Activity.
 | `nav/NavigationController.java`, `nav/Page.java` | Bottom nav + page visibility |
 | `lighting/ReflectionLightsController.java` | Nav catch-lights + unread ring slots |
 | `settings/SettingsPage.java` | Settings, sensory prefs, connection refresh |
+| `settings/IntelligenceSection.java` | Mode toggle, Wi-Fi model download, phone bench, ledger metrics |
 | `flows/FlowsPage.java` | Flows placeholder |
 | `voice/VoiceSessionController.java` | Speak / listen glue for the surface |
 | `ConversationalVoiceController.java` | Speak / listen engine |

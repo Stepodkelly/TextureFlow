@@ -6,7 +6,7 @@ keeps the Android `NotificationListenerService` from silently locking out.
 ## Read in this order
 
 1. **Ingest** — `TextureNotificationListenerService` → `NotificationNormalizer` → `enqueueAttention`
-2. **Wiring** — `NotificationRuntime` (stores, intelligence ledger, bank, executor, attention engine)
+2. **Wiring** — `NotificationRuntime` (stores, intelligence ledger, bank, executor, attention engine; enqueue honors `intelligence_mode`)
 3. **Durability** — `ListenerHealthPolicy` → watchdog / health job / recovery
 
 ## Files by job

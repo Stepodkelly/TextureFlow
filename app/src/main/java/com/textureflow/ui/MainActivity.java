@@ -21,6 +21,7 @@ import com.textureflow.ui.kit.UiKit;
 import com.textureflow.ui.lighting.ReflectionLightsController;
 import com.textureflow.ui.nav.NavigationController;
 import com.textureflow.ui.nav.Page;
+import com.textureflow.ui.settings.IntelligencePreferences;
 import com.textureflow.ui.settings.SettingsPage;
 import com.textureflow.ui.voice.VoiceSessionController;
 
@@ -81,7 +82,9 @@ public final class MainActivity extends Activity {
         surface.voice = new VoiceSessionController(surface);
         surface.intel = new AttentionUiBinder(surface);
         surface.voice.initialize();
-        surface.intel.attachIfPresent(surface.runtime());
+        if (IntelligencePreferences.isEnabled(this)) {
+            surface.intel.attachIfPresent(surface.runtime());
+        }
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(MothMarketTheme.BG);
@@ -151,7 +154,9 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (surface.intel != null) surface.intel.attachIfPresent(surface.runtime());
+        if (surface.intel != null && IntelligencePreferences.isEnabled(this)) {
+            surface.intel.attachIfPresent(surface.runtime());
+        }
         textureEngine.setForeground(true);
         surface.voiceController.start();
         surface.settings.refreshNotificationReader();

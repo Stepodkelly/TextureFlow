@@ -5,7 +5,7 @@ import android.content.SharedPreferences;
 
 /**
  * Intelligence toggle stored in the existing sensory preference file.
- * On by default. Off only detaches the UI binder — it does not rewrite the engine.
+ * On by default. Off detaches the UI binder and skips capture enqueue.
  */
 public final class IntelligencePreferences {
     public static final String PREFERENCES = "texture_surface_preferences";

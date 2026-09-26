@@ -12,6 +12,7 @@ no `android.*` imports.
 | `EventStore` / `StoredEvent` | Repository port so tests do not need Android |
 | `InMemoryEventStore` | JVM fake |
 | `PersonKeys` | Stable person ids from sender name + package |
+| `metrics/` | Settings copy + last-N assessment lines (no bodies) |
 
 Deterministic assessment is published before any `ModelPort.generate` call.
 Step 5 (council) uses the injected port; default is `NoModelPort` → A5.
