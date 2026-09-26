@@ -11,6 +11,7 @@ Chosen runtime: **MediaPipe `tasks-genai` + Gemma 3 1B int4**. Not Gemma 4, not 
 | `CapabilityProbe` | `CapabilityProfile` + T0–T3; empty Part II shard lists |
 | `ModelDownloader` | Wi‑Fi only, resumable, SHA-256, `filesDir/models/` |
 | `ModelPorts` | `open(context)` → MediaPipe if file+debug port exist, else `NoModelPort` |
+| `PromptAssets` | `loadTriage` / `loadSummary` / `loadDraft` from `assets/intelligence/prompts/` |
 
 ## Download
 
@@ -29,4 +30,4 @@ adb push models/gemma3-1b-it-int4.task /data/local/tmp/llm/gemma3-1b-it-int4.tas
 
 `ModelFiles.resolve` prefers `filesDir/models/`, then that adb path.
 
-`AndroidNetworkPolicy` needs `ACCESS_NETWORK_STATE` (request to coordinator / G).
+`AndroidNetworkPolicy` uses `ACCESS_NETWORK_STATE` (declared in the main manifest).

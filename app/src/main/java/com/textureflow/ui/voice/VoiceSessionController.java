@@ -8,6 +8,8 @@ import com.textureflow.actions.ActionType;
 import com.textureflow.data.StoredNotificationEvent;
 import com.textureflow.intelligence.api.AttentionAssessment;
 import com.textureflow.intelligence.api.AttentionLevel;
+import com.textureflow.intelligence.api.SummaryResult;
+import com.textureflow.intelligence.engine.PersonKeys;
 import com.textureflow.texture.TextureCue;
 import com.textureflow.ui.ConversationalVoiceController;
 import com.textureflow.ui.EyeOfHorusView;
@@ -18,6 +20,7 @@ import com.textureflow.ui.chats.ChatListController;
 import com.textureflow.ui.chats.ChatListPresenter;
 import com.textureflow.ui.chats.ConversationController;
 import com.textureflow.ui.nav.Page;
+import com.textureflow.ui.settings.IntelligencePreferences;
 
 import java.util.List;
 import java.util.Locale;
@@ -127,6 +130,15 @@ public final class VoiceSessionController {
         if (surface.activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                 == PackageManager.PERMISSION_GRANTED) surface.voiceController.speakAndListen(message);
         else surface.voiceController.speak(message);
+        requestNeedsMeSummary(urgent);
+    }
+
+    public void onSummaryArrived(SummaryResult result) {
+        if (result == null || System.currentTimeMillis() > needsMeOpenUntil) return;
+        String message = result.getSummary() == null ? "" : result.getSummary().trim();
+        if (message.isEmpty() || message.equals(lastNeedsMeSpoken)) return;
+        lastNeedsMeSpoken = message;
+        surface.voiceController.speak(message);
     }
 
     /** Refine a recent "what needs me?" answer when a model assessment arrives. */
@@ -187,6 +199,9 @@ public final class VoiceSessionController {
             legacy.responseStatus.setVisibility(View.VISIBLE);
             if (conversation.activePhoneProposal() == null) conversation.selectResponseAction("Send");
             else conversation.confirmPhoneProposal();
+            if (surface.intel != null) {
+                surface.intel.requestDraftFor(conversation.currentAttention(), dictatedReply);
+            }
             return;
         }
 
@@ -252,6 +267,14 @@ public final class VoiceSessionController {
         } else {
             surface.voiceController.speakAndListen("You are all caught up. Ask me about a recent person or message.");
         }
+    }
+
+    private void requestNeedsMeSummary(StoredNotificationEvent urgent) {
+        if (urgent == null || surface.intel == null) return;
+        if (!IntelligencePreferences.isEnabled(surface.activity)) return;
+        String personId = PersonKeys.resolve(urgent.getSenderName(), urgent.getPackageName());
+        if (personId.isEmpty()) return;
+        surface.intel.requestSummaryFor(personId, "what needs me?");
     }
 
     private String answerFromLocalHistory(String question) {

@@ -10,11 +10,21 @@ import java.util.Objects;
 /** Loads versioned role prompts from {@code assets/intelligence/prompts/}. */
 public final class PromptAssets {
     public static final String TRIAGE_V1 = "triage.v1.txt";
+    public static final String SUMMARY_V1 = "summary.v1.txt";
+    public static final String DRAFT_V1 = "draft.v1.txt";
 
     private PromptAssets() {}
 
     public static String loadTriage(Context context) throws IOException {
         return load(context, TRIAGE_V1);
+    }
+
+    public static String loadSummary(Context context) throws IOException {
+        return load(context, SUMMARY_V1);
+    }
+
+    public static String loadDraft(Context context) throws IOException {
+        return load(context, DRAFT_V1);
     }
 
     public static String load(Context context, String fileName) throws IOException {

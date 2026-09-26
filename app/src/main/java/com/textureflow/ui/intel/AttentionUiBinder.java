@@ -8,6 +8,8 @@ import com.textureflow.intelligence.api.Callback;
 import com.textureflow.intelligence.api.DraftQuery;
 import com.textureflow.intelligence.api.ProposalDraft;
 import com.textureflow.intelligence.api.ReplyTone;
+import com.textureflow.intelligence.api.SummaryQuery;
+import com.textureflow.intelligence.api.SummaryResult;
 import com.textureflow.ui.MainSurface;
 import com.textureflow.ui.chats.ChatListPresenter;
 
@@ -85,9 +87,12 @@ public final class AttentionUiBinder implements AttentionListener {
     }
 
     public void requestDraftFor(StoredNotificationEvent event) {
+        requestDraftFor(event, event == null ? "" : ChatListPresenter.suggestReply(event));
+    }
+
+    public void requestDraftFor(StoredNotificationEvent event, String userDraftText) {
         if (engine == null || event == null) return;
-        String suggested = ChatListPresenter.suggestReply(event);
-        DraftQuery query = new DraftQuery(event.getEventId(), "", suggested, ReplyTone.NEUTRAL);
+        DraftQuery query = new DraftQuery(event.getEventId(), "", userDraftText, ReplyTone.NEUTRAL);
         engine.requestDraft(query, new Callback<ProposalDraft>() {
             @Override
             public void onResult(ProposalDraft value) {
@@ -97,6 +102,25 @@ public final class AttentionUiBinder implements AttentionListener {
             @Override
             public void onError(Exception error) {
                 // Deterministic suggested reply stays in the editor.
+            }
+        });
+    }
+
+    public void requestSummaryFor(String personId, String userRequest) {
+        if (engine == null || personId == null || personId.isEmpty()) return;
+        engine.requestSummary(new SummaryQuery(personId, userRequest, false), new Callback<SummaryResult>() {
+            @Override
+            public void onResult(SummaryResult value) {
+                surface.mainHandler.post(() -> {
+                    if (surface.voice != null) {
+                        surface.voice.onSummaryArrived(value);
+                    }
+                });
+            }
+
+            @Override
+            public void onError(Exception error) {
+                // Deterministic "what needs me?" speech stays in place.
             }
         });
     }
