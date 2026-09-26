@@ -12,6 +12,7 @@ Longer explanations. If you are new, start with:
 |------|--------|
 | `INTELLIGENCE_PRODUCTION.md` | Production on-device intelligence plan (proposal) |
 | `BUILD_PLAN.md` | Work breakdown for sub-agents building the intelligence engine |
+| `MODEL_BENCHMARK.md` | On-device MediaPipe / Gemma bench (Stream E) |
 | `ANDROID_INTEGRATION.md` | Notification listener on Android |
 | `ANDROID_CONNECTION.md` | Phone ↔ Convex connection |
 | `THREAT_MODEL.md` | Security |

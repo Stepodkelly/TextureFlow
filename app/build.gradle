@@ -31,6 +31,7 @@ android {
         versionName "0.1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments timeout_msec: "300000"
     }
 
     compileOptions {
@@ -68,4 +69,11 @@ android {
 dependencies {
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.json:json:20240303"
+
+    androidTestImplementation "androidx.test.ext:junit:1.2.1"
+    androidTestImplementation "androidx.test:runner:1.6.2"
+    androidTestImplementation "androidx.test:rules:1.6.1"
+
+    // Debug-only MediaPipe LLM Inference (~40 MB AAR). Release APK stays clean.
+    debugImplementation "com.google.mediapipe:tasks-genai:0.10.27"
 }

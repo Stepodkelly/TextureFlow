@@ -25,3 +25,8 @@ coverage/
 # Isolated Wave 1 worktrees
 .worktrees/
 
+# On-device model files (too large for git)
+models/*.task
+models/*.litertlm
+models/*.gguf
+

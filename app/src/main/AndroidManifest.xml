@@ -12,7 +12,8 @@
         android:icon="@drawable/ic_eye_horus"
         android:label="@string/app_name"
         android:theme="@style/AppTheme"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:largeHeap="true">
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
