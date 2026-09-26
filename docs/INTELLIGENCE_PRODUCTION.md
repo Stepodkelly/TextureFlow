@@ -3,7 +3,21 @@
 **Status:** Part I is implemented on `build/W0-foundation` (Wave 0–3). Deviations from this text: `SQLiteOpenHelper` not Room; one structured call first (Triage), then Summarizer/Drafter; **no SkepticRole** yet; MediaPipe + Gemma 3 1B int4 (not Gemma 4); Part II stays contracts-only.  
 **Derived from:** OverSwarm — Production Architecture Plan (`overswarm-hackathon/docs/PRODUCTION_ARCHITECTURE.md`)  
 **Scope:** The intelligence layer of the TextureFlow / Moth Market Android app: how it understands notifications, ranks attention, summarizes, drafts replies, and hands proposals to the user. Not in scope: UI styling, the albedo background, Convex sync, VoiceOS.  
-**Related:** [`ARCHITECTURE.md`](ARCHITECTURE.md), [`THREAT_MODEL.md`](THREAT_MODEL.md), [`../intelligence/README.md`](../intelligence/README.md), [`../app/src/main/java/com/textureflow/bank/README.md`](../app/src/main/java/com/textureflow/bank/README.md)
+**Related:** [`ARCHITECTURE.md`](ARCHITECTURE.md), [`THREAT_MODEL.md`](THREAT_MODEL.md), [`MODEL_BENCHMARK.md`](MODEL_BENCHMARK.md), [`BUILD_PLAN.md`](BUILD_PLAN.md), [`../intelligence/README.md`](../intelligence/README.md), [`../app/src/main/java/com/textureflow/bank/README.md`](../app/src/main/java/com/textureflow/bank/README.md)
+
+### Implementation status (Wave 3)
+
+| Piece | Where |
+|---|---|
+| Tick FSM, A0–A5, listener enqueue | `intelligence/engine/`, `NotificationRuntime` |
+| Deterministic triage + shield + PolicyGate | `intelligence/triage/`, `shield/`, `policy/` |
+| Ledger | `SqliteLedger` on `TextureFlowDatabase` v2 (`SQLiteOpenHelper`, not Room) |
+| Model | MediaPipe `tasks-genai` + Gemma 3 1B int4. Xiaomi T1 ≈ 2.75 tok/s (`MODEL_BENCHMARK.md`) |
+| Roles | `TriageRole`, `SummarizerRole`, `DrafterRole`. **No SkepticRole** (PolicyGate + literal-words fallback) |
+| UI | Chat ranking, glow, proposals, Settings download / §9.4 wizard / metrics |
+| Evals | `shared/evals/triage-cases-v2.json` + `draft-cases.json` |
+
+Part II (helpers, TFSP, sharding) remains contracts-only.
 
 ---
 
@@ -23,14 +37,14 @@ What we take from OverSwarm:
 |---|---|
 | Engine in APK, no Termux/Mac/cloud in the default path | Intelligence runs on the phone; cloud model is opt-in only |
 | Tick FSM | **Attention tick** per notification event or user query |
-| Council (proposer / skeptic / safety / arbiter) | **Triage, Drafter, Skeptic, Policy** roles over one small model |
+| Council (proposer / skeptic / safety / arbiter) | **Triage, Summarizer, Drafter, PolicyGate**. Skeptic deferred |
 | NormLayer before actuation | **PolicyGate** before any proposal reaches the user |
 | Escalation R0–R7 | **Escalation A0–A5**: deterministic first, model only when needed |
 | Closed action enums | `REPLY`, `SNOOZE`, `DISMISS`, `NO_OP` — nothing else |
 | Dual confidence (model vs system) | `modelConfidence` vs `systemConfidence`; only system confidence can raise urgency |
 | Device capability profile + tiers | Chooses which model (or none) runs on this phone |
 | Context / KV budget | Hard token budget per tick; notification text is always untrusted |
-| SQLite ledger + receipts | Room tables for ticks, assessments, proposals, confirmations, receipts |
+| SQLite ledger + receipts | `SQLiteOpenHelper` tables for ticks, assessments, proposals (not Room) |
 | Worker phones (mesh council) | **Helper nodes**: the user's own tablet, laptop or spare phone contribute compute (Part II) |
 | Weapons (depth jobs) + elastic sharding | **Depth plane**: a larger model split across helper nodes for heavy future features (Part II) |
 | Boundary barriers, entropy early exit, late-job cancel | Same mechanics, for depth jobs (§25–§26) |
@@ -142,7 +156,7 @@ App today: urgency via simple heuristics       App: AttentionEngine drives chat 
                 │ reads                                 │ emits proposals only
 ┌───────────────▼──────────────────┐   ┌───────────────▼──────────────────┐
 │ DATA (existing)                   │   │ ACTION PLANE (existing)           │
-│  NotificationRepository (Room)    │   │  CommandPolicy → confirmation     │
+│  NotificationRepository (SQLite)  │   │  CommandPolicy → confirmation     │
 │  NotificationBank / Outbox        │   │  → NotificationActionExecutor     │
 │  ListenerHealthStore              │   │  → ActionReceipt → texture cue    │
 └───────────────▲──────────────────┘   └───────────────────────────────────┘
@@ -179,7 +193,7 @@ App today: urgency via simple heuristics       App: AttentionEngine drives chat 
 | `DeterministicTriage` | Java, no dependencies | Every tick, always |
 | `OnDeviceModelPort` | JNI/NDK library or platform API (§4.3) | When capability tier allows and a tick escalates |
 | `CloudModelPort` | HTTPS client | Only if user enabled cloud mode |
-| `IntelligenceLedger` | Room tables in `TextureFlowDatabase` | Every tick |
+| `IntelligenceLedger` | SQLite tables in `TextureFlowDatabase` | Every tick |
 | `ModelLifecycle` | Loads/unloads model; releases on memory pressure | Around model use |
 
 ### 4.2 Threading and lifetime
@@ -398,7 +412,7 @@ Tier also drops at runtime on thermal `SEVERE`, battery saver, or low RAM.
 
 ### 9.4 Benchmark wizard
 
-Settings → Intelligence → "Test this phone": load model, run a fixed 600-token prefill + 64-token decode, time one Triage and one Draft, store profile, show the tier in plain words ("Good: summaries and drafts on this phone").
+Settings → Intelligence → "Test this phone" **(exists)**: load model, run a fixed 600-token prefill + 64-token decode, time one draft generate, store `CapabilityProfile.Bench`, show the tier in plain words ("Good: summaries and drafts on this phone"). Missing file points at the Wi-Fi download. Xiaomi class stays T1.
 
 ---
 
@@ -438,7 +452,7 @@ model:
 
 ## 11. Data and storage
 
-### 11.1 New Room tables
+### 11.1 Ledger tables (`SQLiteOpenHelper`, not Room)
 
 | Table | Key fields | Notes |
 |---|---|---|
@@ -538,40 +552,40 @@ The same fixtures run against the TypeScript reference and the Java port to prov
 ## 16. Migration roadmap
 
 ### P0 — Freeze contracts
-- [ ] Lock `AttentionEngine` / `AttentionListener` interfaces (§7)
-- [ ] Lock role JSON schemas (from `schemas.ts`) and prompt v1 files
-- [ ] Lock proposal binding fields (I4) and Room table shapes (§11)
-- [ ] Build eval fixtures (§14.2)
+- [x] Lock `AttentionEngine` / `AttentionListener` interfaces (§7)
+- [x] Lock role JSON schemas (from `schemas.ts`) and prompt v1 files
+- [x] Lock proposal binding fields (I4) and SQLite table shapes (§11)
+- [x] Build eval fixtures (§14.2)
 
 ### P1 — Deterministic engine in the APK
-- [ ] Port `priority.ts`, `fallback.ts`, `context.ts`, `aliases.ts` to Java under `app/.../intelligence/`
-- [ ] Parity tests against TS fixtures
-- [ ] Wire listener → enqueue tick; chat list order and ring glow from assessments
-- [ ] Voice "what needs me?" from deterministic summaries
+- [x] Port `priority.ts`, `fallback.ts`, `context.ts`, `aliases.ts` to Java under `app/.../intelligence/`
+- [x] Parity tests against TS fixtures
+- [x] Wire listener → enqueue tick; chat list order and ring glow from assessments
+- [x] Voice "what needs me?" from deterministic summaries
 
 ### P2 — PolicyGate and proposals
-- [ ] `ProposalDraft` → existing `ConfirmedProposal` path
-- [ ] STALE invalidation on `eventVersion` change
-- [ ] Ledger tables + retention job
+- [x] `ProposalDraft` → existing `ConfirmedProposal` path
+- [x] STALE invalidation on `eventVersion` change
+- [x] Ledger tables + retention job
 
 ### P3 — First on-device model
-- [ ] Choose port (§4.3) after benchmarking 2–3 real phones
-- [ ] `ModelLifecycle`, capability profile, benchmark wizard
-- [ ] Triage role only; measure against evals
+- [x] Choose port (§4.3) after benchmarking the connected Xiaomi (MediaPipe + Gemma 3 1B)
+- [x] `ModelLifecycle`, capability profile, benchmark wizard
+- [x] Triage role only; measure against evals
 
 ### P4 — Summaries and drafts
-- [ ] Summarizer, Drafter, Skeptic roles
-- [ ] Literal-words fallback
-- [ ] Latency targets met on T2
+- [x] Summarizer, Drafter roles (Skeptic deferred — PolicyGate + literal words)
+- [x] Literal-words fallback
+- [ ] Latency targets met on T2 (this handset is T1)
 
 ### P5 — Optional cloud assist
 - [ ] Cloud port behind toggle with payload preview
 - [ ] Same PolicyGate; same evals
 
 ### P6 — Contracts for Part II (do early, even if nothing uses them)
-- [ ] `JobClass` interface (§33) and `IntelligencePort` able to return "needs depth"
-- [ ] Reserve Room tables (§34) and TFSP header constants (§27)
-- [ ] `DeviceCapabilityProfile` includes shard fields (§30), even if always empty
+- [x] `JobClass` + local `JobClassRegistry` (`allowDepth=false`; depth jobs unused)
+- [x] Reserve SQLite tables (§34); TFSP header constants stay documented only
+- [x] `CapabilityProfile` includes shard fields (§30), always empty on this phone
 
 ### P7 — Helper nodes, council only (no sharding)
 - [ ] Pairing (QR + key exchange), trust tiers OWNER/MINE (§22)

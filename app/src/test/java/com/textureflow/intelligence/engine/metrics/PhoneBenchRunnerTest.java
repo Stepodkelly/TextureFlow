@@ -37,19 +37,35 @@ public final class PhoneBenchRunnerTest {
     }
 
     @Test
-    public void shortGenerateReportsWallTime() {
-        String text = PhoneBenchRunner.run(true, CapabilityTier.T3, new ScriptedPort(
-                new ModelResponse("ok", 4, 1, 42), null));
-        assertEquals("Fast: this phone can run roles in parallel. Short generate finished in 42 ms.", text);
+    public void wizardReportsPrefillDraftAndTokS() {
+        ScriptedPort port = new ScriptedPort(
+                new ModelResponse("ok", 600, 29, 10_000),
+                new ModelResponse("thanks", 12, 4, 400));
+        PhoneBenchOutcome outcome = PhoneBenchRunner.runMeasured(
+                true, CapabilityTier.T3, port, 1_700_000_000_000L);
+        assertEquals(
+                "Fast: this phone can run roles in parallel. Prefill+64 decode 10000 ms · draft 400 ms · 2.90 tok/s.",
+                outcome.getCopy());
+        assertEquals(2.90d, outcome.getBench().getDecodeTokS(), 0.01d);
+        assertEquals(10_000L, outcome.getBench().getPrefill600Ms());
+        assertEquals(1_700_000_000_000L, outcome.getBench().getBenchmarkedAt());
+        assertEquals(2, port.generates);
     }
 
     @Test
     public void generateFailureBecomesCopy() {
         String text = PhoneBenchRunner.run(true, CapabilityTier.T0, new ScriptedPort(
                 null, new IllegalStateException("No on-device model is loaded.")));
-        assertTrue(text.contains("could not run"));
+        assertTrue(text.contains("could not finish"));
         assertTrue(text.contains("No on-device model is loaded."));
         assertTrue(text.contains("Ranking still works"));
+    }
+
+    @Test
+    public void prefillPromptReachesSixHundredTokens() {
+        NoModelPort port = new NoModelPort();
+        String prompt = PhoneBenchCopy.prefillPrompt(port);
+        assertTrue(port.tokenCount(prompt) >= PhoneBenchCopy.PREFILL_TOKENS);
     }
 
     @Test
@@ -59,12 +75,21 @@ public final class PhoneBenchRunnerTest {
     }
 
     private static final class ScriptedPort implements ModelPort {
-        private final ModelResponse response;
+        private final ModelResponse first;
+        private final ModelResponse second;
         private final Exception failure;
+        int generates;
 
         ScriptedPort(ModelResponse response, Exception failure) {
-            this.response = response;
+            this.first = response;
+            this.second = null;
             this.failure = failure;
+        }
+
+        ScriptedPort(ModelResponse first, ModelResponse second) {
+            this.first = first;
+            this.second = second;
+            this.failure = null;
         }
 
         @Override
@@ -73,10 +98,11 @@ public final class PhoneBenchRunnerTest {
 
         @Override
         public ModelResponse generate(ModelRequest request) throws Exception {
+            generates++;
             if (failure != null) {
                 throw failure;
             }
-            return response;
+            return generates == 1 || second == null ? first : second;
         }
 
         @Override

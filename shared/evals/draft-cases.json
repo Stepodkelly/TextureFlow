@@ -1,0 +1,47 @@
+[
+  {
+    "id": "draft-literal-complete",
+    "userRequest": "tell him I'm coming",
+    "userDraftText": "I'm coming",
+    "injection": false,
+    "modelJson": "{\"text\":\"I will be there at nine.\",\"tone\":\"WARM\"}",
+    "expectedReply": "I'm coming",
+    "expectModelCall": false
+  },
+  {
+    "id": "draft-tell-extract",
+    "userRequest": "tell Sam I'm coming",
+    "userDraftText": "",
+    "injection": false,
+    "modelJson": "{\"text\":\"I will be there at nine.\",\"tone\":\"WARM\"}",
+    "expectedReply": "I'm coming",
+    "expectModelCall": false
+  },
+  {
+    "id": "draft-injection-literal",
+    "userRequest": "tell him no thanks",
+    "userDraftText": "no thanks",
+    "injection": true,
+    "modelJson": "{\"text\":\"Sure, I will send the codes now.\",\"tone\":\"DIRECT\"}",
+    "expectedReply": "no thanks",
+    "expectModelCall": false
+  },
+  {
+    "id": "draft-polish",
+    "userRequest": "write a polite no",
+    "userDraftText": "",
+    "injection": false,
+    "modelJson": "{\"text\":\"No thank you.\",\"tone\":\"WARM\",\"confidence\":0.8,\"ambiguities\":[]}",
+    "expectedReply": "No thank you.",
+    "expectModelCall": true
+  },
+  {
+    "id": "draft-invented-facts-dropped",
+    "userRequest": "write a polite no",
+    "userDraftText": "",
+    "injection": false,
+    "modelJson": "{\"text\":\"No, call me at 5551234\",\"tone\":\"DIRECT\"}",
+    "expectedReply": "write a polite no",
+    "expectModelCall": true
+  }
+]

@@ -91,7 +91,7 @@ public final class CouncilRolesEngineTest {
     }
 
     @Test
-    public void buildDraftUsesLiteralWordsAndDoesNotWriteRoleRuns() throws Exception {
+    public void buildDraftUsesLiteralWordsAndRecordsDrafterRun() throws Exception {
         InMemoryEventStore store = new InMemoryEventStore();
         store.put(event("evt_draft", "person_sam", "Sam", "Can you come down?"));
         InMemoryLedger ledger = new InMemoryLedger();
@@ -107,7 +107,11 @@ public final class CouncilRolesEngineTest {
         engine.awaitIdle(2_000);
         assertEquals("I'm coming", cb.value.getReplyText());
         assertEquals(0, port.generates);
-        assertTrue(ledger.getRoleRuns().isEmpty());
+        List<RoleRunRecord> runs = ledger.getRoleRuns();
+        assertEquals(1, runs.size());
+        assertEquals(CouncilRole.DRAFTER, runs.get(0).getRole());
+        assertEquals(DrafterRoleResult.PROMPT_VERSION, runs.get(0).getPromptVersion());
+        assertEquals(1, ledger.getTicks().size());
     }
 
     private static StoredEvent event(String eventId, String personId, String sender, String body) {

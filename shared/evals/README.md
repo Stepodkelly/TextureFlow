@@ -1,11 +1,12 @@
 # TextureFlow intelligence evals
 
-Two case files live here. Do not mix their schemas.
+Three case files live here. Do not mix their schemas.
 
 | File | Used by | Schema |
 |------|---------|--------|
 | `intelligence-cases.json` | `intelligence/tests/intelligence.test.ts` (`npm run check:intelligence`) | Original 5 fixtures (events, alias seeds, category). **Do not change the 5 existing cases or their fields.** |
 | `triage-cases-v2.json` | Android `TriageEvalRunnerTest` | Flat per-notification labels for Wave 1+ triage |
+| `draft-cases.json` | Android `DraftEvalRunnerTest` | Literal-words / injection draft labels for Wave 3 |
 
 `golden/` is owned by Stream A (`export-golden.mjs`). This stream does not create or edit it.
 

@@ -348,7 +348,7 @@ Do not push or merge. Finish with a report:
 | **C1** | Wave 1 merged | App looks identical (F), tests up from 48, eval baseline report exists |
 | **C2** | G + I merged | Chat list ranked by the Java engine; reasons shown; injection message flagged |
 | **C3** | H merged | Ambiguous message refined by the model on a real phone; evals show no safety regression |
-| **C4** | K + L merged | "What needs me?" summary and a confirmed dictated reply end-to-end |
+| **C4** | K + L merged | "What needs me?" summary and a confirmed dictated reply end-to-end. §9.4 wizard + draft evals landed. |
 
 At each checkpoint: run all tests + evals, install on emulator, screenshot, short report to the user.
 

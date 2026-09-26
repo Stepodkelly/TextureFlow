@@ -1,14 +1,31 @@
 package com.textureflow.intelligence.engine.metrics;
 
 import com.textureflow.intelligence.api.CapabilityTier;
-import com.textureflow.intelligence.model.ModelResponse;
+import com.textureflow.intelligence.model.ModelPort;
 
-/** Doc §9.4 “Test this phone” copy. Short generate only — not the 10s Xiaomi bench. */
+import java.util.Locale;
+
+/** Doc §9.4 “Test this phone” copy. */
 public final class PhoneBenchCopy {
-    public static final String SHORT_PROMPT = "Say ok.";
-    public static final int SHORT_MAX_TOKENS = 8;
+    public static final int PREFILL_TOKENS = 600;
+    public static final int DECODE_TOKENS = 64;
+    public static final int DRAFT_MAX_TOKENS = 32;
+    public static final String DRAFT_PROMPT =
+            "Return JSON only: {\"text\":\"thanks\",\"tone\":\"NEUTRAL\"}";
 
     private PhoneBenchCopy() {}
+
+    public static String prefillPrompt(ModelPort port) {
+        String chunk = "alpha ";
+        StringBuilder text = new StringBuilder();
+        while (tokenCount(port, text) < PREFILL_TOKENS) {
+            text.append(chunk);
+            if (text.length() > PREFILL_TOKENS * 8) {
+                break;
+            }
+        }
+        return text.toString();
+    }
 
     public static String plainTier(CapabilityTier tier) {
         if (tier == null) {
@@ -36,23 +53,38 @@ public final class PhoneBenchCopy {
                 + " No model runtime is available, so this phone stays on ranking only.";
     }
 
-    public static String success(CapabilityTier tier, ModelResponse response) {
-        long ms = response == null ? 0L : response.getWallMs();
-        return plainTier(tier) + " Short generate finished in " + ms + " ms.";
+    public static String success(
+            CapabilityTier tier, long triageMs, long draftMs, double decodeTokS) {
+        return plainTier(tier)
+                + " Prefill+64 decode " + triageMs + " ms"
+                + " · draft " + draftMs + " ms"
+                + " · " + formatTokS(decodeTokS) + " tok/s.";
     }
 
     public static String failure(CapabilityTier tier, Throwable error) {
         String detail = error == null || error.getMessage() == null || error.getMessage().isEmpty()
                 ? "no model port"
                 : error.getMessage();
-        return plainTier(tier) + " Short generate could not run (" + detail + "). Ranking still works.";
+        return plainTier(tier) + " Wizard could not finish (" + detail + "). Ranking still works.";
     }
 
     public static String running() {
-        return "Testing this phone…";
+        return "Testing this phone (600-token prefill + 64-token decode, then a draft)…";
     }
 
     public static String pipLegend() {
         return "A muted teal pip on a chat means the ranking was refined on this phone, not in the cloud.";
+    }
+
+    public static String formatTokS(double tokS) {
+        return String.format(Locale.US, "%.2f", tokS);
+    }
+
+    static int tokenCount(ModelPort port, CharSequence text) {
+        String value = text == null ? "" : text.toString();
+        if (port == null) {
+            return Math.max(0, (int) Math.ceil(value.length() / 4.0));
+        }
+        return port.tokenCount(value);
     }
 }

@@ -27,6 +27,10 @@ final class EvalPaths {
         return repoRoot().resolve("shared/evals/triage-cases-v2.json");
     }
 
+    static Path draftCases() {
+        return repoRoot().resolve("shared/evals/draft-cases.json");
+    }
+
     static Path reportDir() {
         return repoRoot().resolve("app/build/reports/evals");
     }

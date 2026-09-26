@@ -6,8 +6,11 @@ import static org.junit.Assert.assertTrue;
 
 import com.textureflow.intelligence.api.AttentionLevel;
 import com.textureflow.intelligence.engine.metrics.AssessmentMetricsPresenter;
+import com.textureflow.intelligence.engine.metrics.RoleRunMetricsPresenter;
 import com.textureflow.intelligence.ledger.AssessmentRecord;
+import com.textureflow.intelligence.ledger.CouncilRole;
 import com.textureflow.intelligence.ledger.InMemoryLedger;
+import com.textureflow.intelligence.ledger.RoleRunRecord;
 
 import org.junit.Test;
 
@@ -40,6 +43,17 @@ public final class SettingsMetricsTest {
         assertTrue(summary.contains("LOW · promotion"));
         assertFalse(summary.contains("tick-a"));
         assertFalse(summary.contains("0.8"));
+    }
+
+    @Test
+    public void summaryIncludesRoleRunsWithoutBodies() {
+        InMemoryLedger ledger = new InMemoryLedger();
+        ledger.recordRoleRun(new RoleRunRecord(
+                "tick-s", CouncilRole.SUMMARIZER, "summary.v1", 40, 12, 88, true, List.of()));
+        String summary = SettingsMetrics.summary(ledger);
+        assertTrue(summary.contains(RoleRunMetricsPresenter.heading()));
+        assertTrue(summary.contains("SUMMARIZER · 88 ms · ok"));
+        assertFalse(summary.contains("Dinner"));
     }
 
     @Test

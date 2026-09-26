@@ -522,10 +522,12 @@ public final class DefaultAttentionEngine implements AttentionEngine, AutoClosea
         boolean injection = decision.forbidDrafts()
                 || shielded.isInjectionFlagged()
                 || deterministic.getFeatures().isMaliciousInstruction();
+        String tickId = nextTickId(now);
+        DrafterRoleResult roleResult = null;
         if (shouldUseCouncilRole(false)) {
             try {
                 DrafterRole role = new DrafterRole(model, DrafterRole.DEFAULT_PROMPT);
-                DrafterRoleResult roleResult = role.draft(new DrafterRoleRequest(
+                roleResult = role.draft(new DrafterRoleRequest(
                         shielded,
                         query.getUserRequest(),
                         query.getUserDraftText(),
@@ -537,6 +539,7 @@ public final class DefaultAttentionEngine implements AttentionEngine, AutoClosea
                         currentVersion(stored),
                         deterministic.getAssessment().getScore(),
                         injection));
+                recordDraftRoleRun(tickId, roleResult);
                 reply = roleResult.getReplyText();
                 if (roleResult.getTone() != null) {
                     tone = roleResult.getTone();
@@ -571,6 +574,16 @@ public final class DefaultAttentionEngine implements AttentionEngine, AutoClosea
                 ambiguities,
                 payloadHash,
                 now + 15 * 60_000L);
+        ledger.recordTick(new TickRecord(
+                tickId,
+                TickTrigger.DRAFT_REQUEST,
+                stored.getPersonId(),
+                stored.getPackageName(),
+                now,
+                Math.max(0, clock.nowMillis() - now),
+                decision.ruleId(),
+                capability.getTier(),
+                source));
         ledger.upsertProposal(ProposalRecord.from(draft, ProposalStatus.OPEN, now));
         trackProposal(draft);
         return draft;
@@ -584,6 +597,21 @@ public final class DefaultAttentionEngine implements AttentionEngine, AutoClosea
             return true;
         }
         return forceModel;
+    }
+
+    private void recordDraftRoleRun(String tickId, DrafterRoleResult result) {
+        if (tickId == null || tickId.isEmpty() || result == null) {
+            return;
+        }
+        ledger.recordRoleRun(new RoleRunRecord(
+                tickId,
+                CouncilRole.DRAFTER,
+                DrafterRoleResult.PROMPT_VERSION,
+                result.getInputTokens(),
+                result.getOutputTokens(),
+                result.getWallMs(),
+                result.isSchemaValid(),
+                Collections.emptyList()));
     }
 
     private void recordSummaryRoleRun(String tickId, SummarizerRoleResult result) {

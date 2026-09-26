@@ -10,13 +10,13 @@ import com.textureflow.intelligence.api.CapabilityProfile;
 import com.textureflow.intelligence.engine.metrics.AssessmentMetricsPresenter;
 import com.textureflow.intelligence.engine.metrics.ModelDownloadCopy;
 import com.textureflow.intelligence.engine.metrics.PhoneBenchCopy;
+import com.textureflow.intelligence.engine.metrics.PhoneBenchOutcome;
 import com.textureflow.intelligence.engine.metrics.PhoneBenchRunner;
 import com.textureflow.intelligence.model.AndroidNetworkPolicy;
 import com.textureflow.intelligence.model.CapabilityProbe;
 import com.textureflow.intelligence.model.DownloadListener;
 import com.textureflow.intelligence.model.ModelDownloader;
 import com.textureflow.intelligence.model.ModelFiles;
-import com.textureflow.intelligence.model.ModelPort;
 import com.textureflow.intelligence.model.ModelPorts;
 import com.textureflow.ui.MainSurface;
 import com.textureflow.ui.kit.UiKit;
@@ -220,14 +220,25 @@ public final class IntelligenceSection {
         surface.actionExecutor.execute(() -> {
             boolean present = ModelFiles.isPresent(ModelFiles.resolve(surface.activity));
             CapabilityProfile profile = CapabilityProbe.fromAndroid(surface.activity);
-            String text;
+            PhoneBenchOutcome outcome;
             if (!present) {
-                text = PhoneBenchCopy.missingFile(profile.getTier());
+                outcome = new PhoneBenchOutcome(PhoneBenchCopy.missingFile(profile.getTier()), null);
             } else {
-                ModelPort port = ModelPorts.open(surface.activity);
-                text = PhoneBenchRunner.run(true, profile.getTier(), port);
+                outcome = PhoneBenchRunner.runMeasured(
+                        true,
+                        profile.getTier(),
+                        ModelPorts.open(surface.activity),
+                        System.currentTimeMillis());
+                if (outcome.getBench() != null) {
+                    try {
+                        surface.runtime().ledger().saveCapabilityProfile(
+                                CapabilityProbe.fromAndroid(surface.activity, outcome.getBench()));
+                    } catch (RuntimeException ignored) {
+                        // Persist must not fail the wizard copy.
+                    }
+                }
             }
-            String shown = text;
+            String shown = outcome.getCopy();
             surface.mainHandler.post(() -> {
                 lastBenchResult = shown;
                 if (benchStatus != null) {
