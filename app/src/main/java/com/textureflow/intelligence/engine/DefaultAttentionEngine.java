@@ -182,6 +182,12 @@ public final class DefaultAttentionEngine implements AttentionEngine, AutoClosea
         }
     }
 
+    public void removeListener(AttentionListener listener) {
+        if (listener != null) {
+            listeners.remove(listener);
+        }
+    }
+
     @Override
     public CapabilityProfile capability() {
         return capability;

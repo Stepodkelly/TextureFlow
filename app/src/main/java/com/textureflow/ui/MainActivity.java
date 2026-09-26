@@ -191,6 +191,12 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        surface.runtime().modelLifecycle().onTrimMemory(level);
+    }
+
+    @Override
     protected void onDestroy() {
         if (shakeController != null) shakeController.release();
         if (surface.intel != null) surface.intel.detach();

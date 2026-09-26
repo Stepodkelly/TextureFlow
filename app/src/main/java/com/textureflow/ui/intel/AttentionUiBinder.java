@@ -137,7 +137,7 @@ public final class AttentionUiBinder implements AttentionListener {
     public static AttentionEngine findOnRuntime(Object runtime) {
         if (runtime == null) return null;
         String[] methods = {
-                "attentionEngine", "getAttentionEngine", "engine", "getEngine"
+                "attentionEngine", "getAttentionEngine", "attention", "engine", "getEngine"
         };
         for (String name : methods) {
             try {

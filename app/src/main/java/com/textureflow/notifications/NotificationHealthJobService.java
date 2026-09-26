@@ -63,8 +63,9 @@ public final class NotificationHealthJobService extends JobService {
                 NotificationRuntime runtime = NotificationRuntime.get(application);
                 try {
                     runtime.ledger().purgeOlderThan(retentionCutoff(now));
+                    runtime.modelLifecycle().unloadIfIdle(now);
                 } catch (RuntimeException ignored) {
-                    // Retention must not skip listener health.
+                    // Retention / idle unload must not skip listener health.
                 }
                 if (!hasNotificationAccess(application)) {
                     runtime.health().markStale(now, "notification access revoked");

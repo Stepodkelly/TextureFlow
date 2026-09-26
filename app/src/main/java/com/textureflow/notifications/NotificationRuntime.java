@@ -22,14 +22,16 @@ import com.textureflow.data.StoredNotificationEvent;
 import com.textureflow.data.TextureFlowDatabase;
 import com.textureflow.intelligence.api.AttentionEngine;
 import com.textureflow.intelligence.api.EventSignal;
-import com.textureflow.intelligence.engine.CapabilityProfiles;
+import com.textureflow.intelligence.api.CapabilityProfile;
 import com.textureflow.intelligence.engine.DefaultAttentionEngine;
 import com.textureflow.intelligence.engine.EventStore;
 import com.textureflow.intelligence.engine.PersonKeys;
 import com.textureflow.intelligence.engine.StoredEvent;
 import com.textureflow.intelligence.ledger.IntelligenceLedger;
 import com.textureflow.intelligence.ledger.SqliteLedger;
-import com.textureflow.intelligence.model.NoModelPort;
+import com.textureflow.intelligence.model.CapabilityProbe;
+import com.textureflow.intelligence.model.ModelLifecycle;
+import com.textureflow.intelligence.model.ModelPorts;
 import com.textureflow.policy.CommandPolicy;
 
 import java.util.ArrayList;
@@ -48,6 +50,7 @@ public final class NotificationRuntime {
     private final ActionReceiptStore receipts;
     private final ListenerHealthStore health;
     private final IntelligenceLedger ledger;
+    private final ModelLifecycle modelLifecycle;
     private final LiveActionRegistry liveActions;
     private final NotificationBank bank;
     private final Object engineLock = new Object();
@@ -62,6 +65,7 @@ public final class NotificationRuntime {
         this.receipts = new ActionReceiptStore(database);
         this.health = new ListenerHealthStore(database);
         this.ledger = new SqliteLedger(database);
+        this.modelLifecycle = ModelPorts.lifecycle(this.context);
         this.liveActions = new LiveActionRegistry();
         this.bank = new NotificationBank(
                 new BankStore(this.context),
@@ -84,6 +88,7 @@ public final class NotificationRuntime {
     public ActionReceiptStore receipts() { return receipts; }
     public ListenerHealthStore health() { return health; }
     public IntelligenceLedger ledger() { return ledger; }
+    public ModelLifecycle modelLifecycle() { return modelLifecycle; }
     public LiveActionRegistry liveActions() { return liveActions; }
     public NotificationBank bank() { return bank; }
 
@@ -94,11 +99,17 @@ public final class NotificationRuntime {
         }
         synchronized (engineLock) {
             if (attentionEngine == null) {
+                CapabilityProfile profile = CapabilityProbe.fromAndroid(context);
+                try {
+                    ledger.saveCapabilityProfile(profile);
+                } catch (RuntimeException ignored) {
+                    // Probe persist must not block capture.
+                }
                 attentionEngine = new DefaultAttentionEngine(
                         new RepositoryEventStore(),
                         ledger,
-                        new NoModelPort(),
-                        CapabilityProfiles.deterministicOnly());
+                        modelLifecycle,
+                        profile);
             }
             return attentionEngine;
         }
