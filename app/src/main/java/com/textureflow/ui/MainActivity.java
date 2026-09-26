@@ -10,11 +10,13 @@ import android.os.Looper;
 import android.widget.FrameLayout;
 
 import com.textureflow.data.StoredNotificationEvent;
+import com.textureflow.intelligence.api.AttentionEngine;
 import com.textureflow.texture.TextureCue;
 import com.textureflow.texture.TextureCueScheduler;
 import com.textureflow.ui.chats.ChatListController;
 import com.textureflow.ui.chats.ConversationController;
 import com.textureflow.ui.flows.FlowsPage;
+import com.textureflow.ui.intel.AttentionUiBinder;
 import com.textureflow.ui.kit.UiKit;
 import com.textureflow.ui.lighting.ReflectionLightsController;
 import com.textureflow.ui.nav.NavigationController;
@@ -77,7 +79,9 @@ public final class MainActivity extends Activity {
         surface.settings = new SettingsPage(surface);
         surface.flows = new FlowsPage(surface);
         surface.voice = new VoiceSessionController(surface);
+        surface.intel = new AttentionUiBinder(surface);
         surface.voice.initialize();
+        surface.intel.attachIfPresent(surface.runtime());
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(MothMarketTheme.BG);
@@ -139,9 +143,15 @@ public final class MainActivity extends Activity {
         surface.chats.renderPeople(Collections.emptyList());
     }
 
+    public void setAttentionEngine(AttentionEngine engine) {
+        if (surface.intel == null) surface.intel = new AttentionUiBinder(surface);
+        surface.intel.setEngine(engine);
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        if (surface.intel != null) surface.intel.attachIfPresent(surface.runtime());
         textureEngine.setForeground(true);
         surface.voiceController.start();
         surface.settings.refreshNotificationReader();
@@ -183,6 +193,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (shakeController != null) shakeController.release();
+        if (surface.intel != null) surface.intel.detach();
         surface.voiceController.release();
         actionExecutor.shutdownNow();
         textureEngine.release();

@@ -11,9 +11,11 @@ on the chat list without editing a 2k-line Activity.
 | `MothMarketTheme.java` | Colors, card chrome, logo / avatar helpers |
 | `kit/UiKit.java` | Surfaces, text, buttons, dp + layout-param helpers |
 | `chats/ChatListController.java` | Chat list, search, glow-ring registration, hidden legacy chrome |
-| `chats/ChatListPresenter.java` | Pure grouping, filter, attention queue, reply/history helpers |
+| `chats/ChatListPresenter.java` | Pure grouping, attention rank, queue, reply/history helpers |
+| `chats/ProposalFlowPresenter.java` | Draft bookkeeping, stale/invalidation, ConfirmedProposal |
 | `chats/ConversationController.java` | Thread page, bubbles, response / proposal confirm-cancel |
 | `chats/PersonTimeline.java`, `ChatBubble.java` | Package-visible chat-list types |
+| `intel/AttentionUiBinder.java` | Engine subscribe + assessment/draft fan-in |
 | `nav/NavigationController.java`, `nav/Page.java` | Bottom nav + page visibility |
 | `lighting/ReflectionLightsController.java` | Nav catch-lights + unread ring slots |
 | `settings/SettingsPage.java` | Settings, sensory prefs, connection refresh |
@@ -28,7 +30,16 @@ on the chat list without editing a 2k-line Activity.
 | `TextureDrawableFactory.java` | Drawable helpers |
 | `ShakeUrgencyController.java` | Shake → urgency behavior |
 
-`ChatListController.setAssessments(Map<personId, AttentionAssessment>)` is a
-no-op seam for Stream I.
+Stream I wires assessments onto the chat list:
+
+- `intel/AttentionUiBinder` subscribes to `AttentionEngine` when MainActivity
+  finds one on `NotificationRuntime` (or via `setAttentionEngine`).
+- `ChatListController.setAssessments` re-ranks people
+  (URGENT > IMPORTANT > others, then recency) and shows a reason line.
+- Ring glow intensity follows `AttentionLevel` (URGENT strongest). A muted teal
+  pip marks `ON_DEVICE_MODEL` results.
+- `ProposalFlowPresenter` holds engine drafts, detects stale/invalidated
+  proposals, and builds `ConfirmedProposal` for the existing CommandPolicy path.
+- Voice "What needs me?" speaks the deterministic top items immediately.
 
 Drawables / colors: `app/src/main/res/drawable*`, `res/values/colors_moth.xml`.

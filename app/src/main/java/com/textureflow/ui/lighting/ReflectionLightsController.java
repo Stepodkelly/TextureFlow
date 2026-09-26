@@ -20,6 +20,7 @@ public final class ReflectionLightsController {
     private final MainSurface surface;
     private final List<View> glowRingViews = new ArrayList<>();
     private final List<Integer> glowRingColors = new ArrayList<>();
+    private final List<Float> glowRingIntensities = new ArrayList<>();
 
     public ReflectionLightsController(MainSurface surface) {
         this.surface = surface;
@@ -28,11 +29,17 @@ public final class ReflectionLightsController {
     public void clearGlowRings() {
         glowRingViews.clear();
         glowRingColors.clear();
+        glowRingIntensities.clear();
     }
 
     public void registerGlowRing(View card, int color) {
+        registerGlowRing(card, color, 0.45f);
+    }
+
+    public void registerGlowRing(View card, int color, float intensity) {
         glowRingViews.add(card);
         glowRingColors.add(color);
+        glowRingIntensities.add(intensity);
     }
 
     public void update() {
@@ -91,7 +98,7 @@ public final class ReflectionLightsController {
                     corner,
                     reach,
                     glowRingColors.get(i),
-                    0.45f,
+                    glowRingIntensities.get(i),
                     3.2f);
             slot++;
         }

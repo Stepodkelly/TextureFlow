@@ -18,6 +18,7 @@ import android.widget.TextView;
 import com.textureflow.R;
 import com.textureflow.data.StoredNotificationEvent;
 import com.textureflow.intelligence.api.AttentionAssessment;
+import com.textureflow.intelligence.api.AttentionLevel;
 import com.textureflow.ui.EyeOfHorusView;
 import com.textureflow.ui.MainSurface;
 import com.textureflow.ui.MothMarketTheme;
@@ -26,6 +27,7 @@ import com.textureflow.ui.nav.Page;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +59,6 @@ public final class ChatListController {
     private EditText searchField;
     private TextView chatsEmpty;
     private String peopleSignature = "";
-    @SuppressWarnings("unused")
     private Map<String, AttentionAssessment> assessments = Collections.emptyMap();
 
     public ChatListController(MainSurface surface) {
@@ -76,9 +77,20 @@ public final class ChatListController {
         return chatListContainer;
     }
 
-    /** Stream I seam: assessments are ignored until intelligence wiring lands. */
-    public void setAssessments(Map<String, AttentionAssessment> assessments) {
-        this.assessments = assessments == null ? Collections.emptyMap() : assessments;
+    public Map<String, AttentionAssessment> assessments() {
+        return assessments;
+    }
+
+    /** Apply engine assessments: re-rank people and refresh the visible list. */
+    public void setAssessments(Map<String, AttentionAssessment> incoming) {
+        this.assessments = incoming == null || incoming.isEmpty()
+                ? Collections.emptyMap()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(incoming));
+        if (cachedPeople.isEmpty()) return;
+        List<PersonTimeline> ranked = ChatListPresenter.rankPeople(cachedPeople, this.assessments);
+        cachedPeople.clear();
+        cachedPeople.addAll(ranked);
+        filterChatList(searchField == null ? "" : searchField.getText().toString());
     }
 
     public FrameLayout buildPage() {
@@ -224,7 +236,8 @@ public final class ChatListController {
     }
 
     private void rebuildPeople(List<StoredNotificationEvent> events) {
-        List<PersonTimeline> ordered = ChatListPresenter.groupPeople(events, liveEventIds());
+        List<PersonTimeline> ordered = ChatListPresenter.groupPeople(
+                events, liveEventIds(), assessments);
         if (ordered.isEmpty()) {
             ordered.add(ChatListPresenter.demoAlex(System.currentTimeMillis()));
         }
@@ -292,22 +305,26 @@ public final class ChatListController {
         card.setPadding(avatarSize - overhang + kit.dp(10), kit.dp(14), kit.dp(14), kit.dp(14));
         card.setClickable(true);
         card.setFocusable(true);
-        card.setContentDescription(person.name + ", " + person.latestBody);
+        card.setContentDescription(personDescription(person));
         card.setOnClickListener(view -> surface.conversation.openConversation(person));
         surface.textureEngine.attachGlassControl(card);
 
+        boolean glow = ChatListPresenter.shouldGlow(person);
         String glowPackage = person.unreadCount > 0
                 ? (person.latestUnreadPackage == null || person.latestUnreadPackage.isEmpty()
                     ? person.latestPackage : person.latestUnreadPackage)
-                : null;
+                : person.latestPackage;
         String glowLabel = person.unreadCount > 0
                 ? (person.latestUnreadAppLabel == null || person.latestUnreadAppLabel.isEmpty()
                     ? person.latestAppLabel : person.latestUnreadAppLabel)
-                : null;
-        if (glowPackage != null) {
+                : person.latestAppLabel;
+        AttentionLevel glowLevel = person.assessment == null ? null : person.assessment.getLevel();
+        if (glow && glowPackage != null) {
             int glowColor = MothMarketTheme.glowForPackage(glowPackage, glowLabel);
-            MothMarketTheme.applyGlow(card, surface.activity, glowColor);
-            surface.lights.registerGlowRing(card, glowColor);
+            MothMarketTheme.applyGlow(card, surface.activity, glowColor,
+                    ChatListPresenter.glowAlpha(glowLevel));
+            surface.lights.registerGlowRing(card, glowColor,
+                    ChatListPresenter.glowIntensity(glowLevel));
         } else {
             card.setBackground(MothMarketTheme.quietCard(surface.activity));
             card.setElevation(kit.dp(2));
@@ -315,12 +332,32 @@ public final class ChatListController {
 
         LinearLayout labels = new LinearLayout(surface.activity);
         labels.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout nameRow = new LinearLayout(surface.activity);
+        nameRow.setOrientation(LinearLayout.HORIZONTAL);
+        nameRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView name = kit.text(person.name, 18, UiKit.INK, true);
-        labels.addView(name);
+        nameRow.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
+        if (ChatListPresenter.isOnDeviceModel(person.assessment)) {
+            View sourceDot = new View(surface.activity);
+            sourceDot.setBackground(MothMarketTheme.circle(UiKit.TEAL));
+            sourceDot.setAlpha(0.42f);
+            sourceDot.setContentDescription("On-device model");
+            LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(kit.dp(7), kit.dp(7));
+            dotParams.setMargins(kit.dp(8), 0, 0, 0);
+            nameRow.addView(sourceDot, dotParams);
+        }
+        labels.addView(nameRow);
         TextView snippet = kit.text(person.latestBody, 14, UiKit.INK, false);
         snippet.setSingleLine(true);
         snippet.setEllipsize(TextUtils.TruncateAt.END);
         labels.addView(snippet, kit.topMargin(kit.dp(4)));
+        String reason = ChatListPresenter.reasonLine(person.assessment);
+        if (!reason.isEmpty()) {
+            TextView reasonView = kit.text(reason, 12, UiKit.MUTED, false);
+            reasonView.setSingleLine(true);
+            reasonView.setEllipsize(TextUtils.TruncateAt.END);
+            labels.addView(reasonView, kit.topMargin(kit.dp(2)));
+        }
         LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, -2, 1f);
         labelParams.setMargins(0, 0, kit.dp(10), 0);
         card.addView(labels, labelParams);
@@ -359,5 +396,11 @@ public final class ChatListController {
         shell.addView(avatar, avatarParams);
 
         return shell;
+    }
+
+    private static String personDescription(PersonTimeline person) {
+        String reason = ChatListPresenter.reasonLine(person.assessment);
+        if (reason.isEmpty()) return person.name + ", " + person.latestBody;
+        return person.name + ", " + reason + ", " + person.latestBody;
     }
 }

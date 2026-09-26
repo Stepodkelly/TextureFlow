@@ -1,11 +1,15 @@
 package com.textureflow.ui.chats;
 
 import com.textureflow.data.StoredNotificationEvent;
+import com.textureflow.intelligence.api.AssessmentSource;
+import com.textureflow.intelligence.api.AttentionAssessment;
+import com.textureflow.intelligence.api.AttentionLevel;
 import com.textureflow.policy.AttentionQueuePolicy;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +43,13 @@ public final class ChatListPresenter {
 
     static List<PersonTimeline> groupPeople(
             List<StoredNotificationEvent> events, Set<String> liveIds) {
+        return groupPeople(events, liveIds, Collections.emptyMap());
+    }
+
+    static List<PersonTimeline> groupPeople(
+            List<StoredNotificationEvent> events,
+            Set<String> liveIds,
+            Map<String, AttentionAssessment> assessments) {
         Map<String, PersonTimeline> people = new LinkedHashMap<>();
         for (StoredNotificationEvent event : events) {
             if (!isConversationCandidate(event)) continue;
@@ -68,9 +79,135 @@ public final class ChatListPresenter {
                 }
             }
         }
-        List<PersonTimeline> ordered = new ArrayList<>(people.values());
-        ordered.sort((left, right) -> Long.compare(right.latestAt, left.latestAt));
-        return ordered;
+        return rankPeople(new ArrayList<>(people.values()), assessments);
+    }
+
+    static List<PersonTimeline> rankPeople(
+            List<PersonTimeline> people, Map<String, AttentionAssessment> assessments) {
+        List<PersonTimeline> ranked = new ArrayList<>(people);
+        for (PersonTimeline person : ranked) {
+            person.assessment = assessmentFor(person, assessments);
+        }
+        ranked.sort((left, right) -> {
+            int urgency = Integer.compare(levelRank(right.assessment), levelRank(left.assessment));
+            if (urgency != 0) return urgency;
+            return Long.compare(right.latestAt, left.latestAt);
+        });
+        return ranked;
+    }
+
+    static AttentionAssessment assessmentFor(
+            PersonTimeline person, Map<String, AttentionAssessment> assessments) {
+        if (person == null || assessments == null || assessments.isEmpty()) return null;
+        AttentionAssessment byKey = assessments.get(person.personKey);
+        if (byKey != null) return byKey;
+        AttentionAssessment byName = assessments.get(person.name);
+        if (byName != null) return byName;
+        for (AttentionAssessment assessment : assessments.values()) {
+            if (assessment == null) continue;
+            if (!assessment.getPersonId().isEmpty()
+                    && (assessment.getPersonId().equals(person.personKey)
+                    || assessment.getPersonId().equals(person.name))) {
+                return assessment;
+            }
+            if (assessment.getLeadEventId().isEmpty()) continue;
+            for (StoredNotificationEvent event : person.events) {
+                if (assessment.getLeadEventId().equals(event.getEventId())) return assessment;
+            }
+        }
+        return null;
+    }
+
+    static AttentionAssessment assessmentForEvent(
+            StoredNotificationEvent event, Map<String, AttentionAssessment> assessments) {
+        if (event == null || assessments == null || assessments.isEmpty()) return null;
+        for (AttentionAssessment assessment : assessments.values()) {
+            if (assessment != null && event.getEventId().equals(assessment.getLeadEventId())) {
+                return assessment;
+            }
+        }
+        String name = emptyFallback(event.getSenderName(), event.getConversationLabel());
+        if (name == null) return null;
+        AttentionAssessment byKey = assessments.get(normalizePersonKey(name));
+        return byKey != null ? byKey : assessments.get(name.trim());
+    }
+
+    /** URGENT=2, IMPORTANT=1, everyone else (including no assessment)=0. */
+    public static int levelRank(AttentionAssessment assessment) {
+        if (assessment == null) return 0;
+        return levelRank(assessment.getLevel());
+    }
+
+    public static int levelRank(AttentionLevel level) {
+        if (level == AttentionLevel.URGENT) return 2;
+        if (level == AttentionLevel.IMPORTANT) return 1;
+        return 0;
+    }
+
+    public static AttentionLevel effectiveLevel(
+            StoredNotificationEvent event, Map<String, AttentionAssessment> assessments) {
+        AttentionAssessment assessment = assessmentForEvent(event, assessments);
+        if (assessment != null) return assessment.getLevel();
+        return parseStoredLevel(event == null ? null : event.getPriorityLevel());
+    }
+
+    public static AttentionLevel parseStoredLevel(String priorityLevel) {
+        if (priorityLevel == null) return AttentionLevel.NORMAL;
+        try {
+            return AttentionLevel.valueOf(priorityLevel.trim().toUpperCase(Locale.US));
+        } catch (IllegalArgumentException ignored) {
+            return AttentionLevel.NORMAL;
+        }
+    }
+
+    public static String levelLabel(AttentionLevel level) {
+        if (level == null) return "";
+        return switch (level) {
+            case URGENT -> "Urgent";
+            case IMPORTANT -> "Important";
+            case NORMAL -> "Normal";
+            case LOW -> "Low";
+        };
+    }
+
+    public static String reasonLine(AttentionAssessment assessment) {
+        if (assessment == null) return "";
+        String reason = emptyFallback(assessment.getReason(), "");
+        String label = levelLabel(assessment.getLevel());
+        if (reason.isEmpty()) return label;
+        if (label.isEmpty()) return reason;
+        return label + " · " + reason;
+    }
+
+    public static boolean isOnDeviceModel(AssessmentSource source) {
+        return source == AssessmentSource.ON_DEVICE_MODEL;
+    }
+
+    public static boolean isOnDeviceModel(AttentionAssessment assessment) {
+        return assessment != null && isOnDeviceModel(assessment.getSource());
+    }
+
+    /** Ring catch-light intensity. URGENT is strongest. */
+    public static float glowIntensity(AttentionLevel level) {
+        if (level == AttentionLevel.URGENT) return 0.85f;
+        if (level == AttentionLevel.IMPORTANT) return 0.62f;
+        if (level == AttentionLevel.NORMAL) return 0.40f;
+        if (level == AttentionLevel.LOW) return 0.24f;
+        return 0.45f;
+    }
+
+    public static int glowAlpha(AttentionLevel level) {
+        if (level == AttentionLevel.URGENT) return 168;
+        if (level == AttentionLevel.IMPORTANT) return 124;
+        if (level == AttentionLevel.NORMAL) return 92;
+        if (level == AttentionLevel.LOW) return 72;
+        return 100;
+    }
+
+    public static boolean shouldGlow(PersonTimeline person) {
+        if (person == null) return false;
+        if (person.unreadCount > 0) return true;
+        return levelRank(person.assessment) > 0;
     }
 
     static PersonTimeline demoAlex(long now) {
@@ -112,19 +249,30 @@ public final class ChatListPresenter {
             Set<String> handledKeys,
             Map<String, Long> hiddenEventUntil,
             long now) {
+        return attentionQueue(events, handledKeys, hiddenEventUntil, now, Collections.emptyMap());
+    }
+
+    public static List<StoredNotificationEvent> attentionQueue(
+            List<StoredNotificationEvent> events,
+            Set<String> handledKeys,
+            Map<String, Long> hiddenEventUntil,
+            long now,
+            Map<String, AttentionAssessment> assessments) {
         List<StoredNotificationEvent> queue = new ArrayList<>();
         for (StoredNotificationEvent event : events) {
-            if (!AttentionQueuePolicy.shouldSurface(
-                    event.getPriorityLevel(), event.hasCapability("REPLY"))) continue;
+            AttentionLevel level = effectiveLevel(event, assessments);
+            if (!AttentionQueuePolicy.shouldSurface(level.name(), event.hasCapability("REPLY"))) {
+                continue;
+            }
             Long hiddenUntil = hiddenEventUntil.get(event.getEventId());
             if (hiddenUntil != null && hiddenUntil > now) continue;
             if (hiddenUntil != null) hiddenEventUntil.remove(event.getEventId());
             if (!handledKeys.contains(attentionKey(event))) queue.add(event);
         }
         queue.sort((left, right) -> {
-            int urgency = Boolean.compare(
-                    "URGENT".equals(right.getPriorityLevel()),
-                    "URGENT".equals(left.getPriorityLevel()));
+            AttentionLevel leftLevel = effectiveLevel(left, assessments);
+            AttentionLevel rightLevel = effectiveLevel(right, assessments);
+            int urgency = Integer.compare(levelRank(rightLevel), levelRank(leftLevel));
             if (urgency != 0) return urgency;
             int replyability = Boolean.compare(
                     right.hasCapability("REPLY"), left.hasCapability("REPLY"));
@@ -133,6 +281,56 @@ public final class ChatListPresenter {
             return priority != 0 ? priority : Long.compare(right.getUpdatedAt(), left.getUpdatedAt());
         });
         return queue;
+    }
+
+    /**
+     * Deterministic spoken summary for "What needs me?". Uses assessment.level
+     * when present, otherwise the stored notification priority. Does not wait
+     * for a model result.
+     */
+    public static String needsMeSpoken(
+            List<StoredNotificationEvent> queue, Map<String, AttentionAssessment> assessments) {
+        if (queue == null || queue.isEmpty()) return "You are all caught up.";
+        int limit = Math.min(3, queue.size());
+        StringBuilder spoken = new StringBuilder();
+        if (queue.size() == 1) {
+            spoken.append(needsMeItem(queue.get(0), assessments, true));
+            return spoken.toString();
+        }
+        spoken.append(queue.size() == 2 ? "Two things need you. " : "A few things need you. ");
+        for (int index = 0; index < limit; index++) {
+            spoken.append(needsMeItem(queue.get(index), assessments, index == 0));
+            if (index < limit - 1) spoken.append(" ");
+        }
+        return spoken.toString();
+    }
+
+    private static String needsMeItem(
+            StoredNotificationEvent event,
+            Map<String, AttentionAssessment> assessments,
+            boolean lead) {
+        AttentionLevel level = effectiveLevel(event, assessments);
+        String who = emptyFallback(event.getSenderName(), "someone");
+        String app = emptyFallback(event.getAppLabel(), "your phone");
+        String body = emptyFallback(event.getBody(), "Open TextureFlow for details.");
+        if (level == AttentionLevel.URGENT) {
+            return (lead ? "Urgent from " : "Also urgent from ")
+                    + who + " on " + app + ". " + body;
+        }
+        if (level == AttentionLevel.IMPORTANT) {
+            return (lead ? "Important from " : "Also from ")
+                    + who + " on " + app + ". " + body;
+        }
+        return (lead ? "From " : "Also from ") + who + " on " + app + ". " + body;
+    }
+
+    public static boolean looksLikeNeedsMe(String normalized) {
+        if (normalized == null || normalized.isEmpty()) return false;
+        return normalized.equals("what needs me")
+                || normalized.equals("what's urgent")
+                || normalized.equals("what is urgent")
+                || normalized.equals("what needs my attention")
+                || normalized.contains("what needs me");
     }
 
     public static String suggestReply(StoredNotificationEvent event) {
