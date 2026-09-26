@@ -74,6 +74,7 @@ dependencies {
     androidTestImplementation "androidx.test:runner:1.6.2"
     androidTestImplementation "androidx.test:rules:1.6.1"
 
-    // Debug-only MediaPipe LLM Inference (~40 MB AAR). Release APK stays clean.
+    // Wave 2: MediaPipe LLM Inference stays debug-only (~40 MB AAR).
+    // The 529 MB Gemma 3 1B int4 .task is downloaded or adb-pushed — never packaged.
     debugImplementation "com.google.mediapipe:tasks-genai:0.10.27"
 }

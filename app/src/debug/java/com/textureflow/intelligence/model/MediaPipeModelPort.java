@@ -9,11 +9,12 @@ import java.io.File;
 import java.util.Objects;
 
 /**
- * Debug-only MediaPipe LLM Inference port (Gemma 3 1B int4 .task).
- * Model file is not bundled; push it to {@link #DEFAULT_MODEL_PATH}.
+ * Production on-device port (debug source set): MediaPipe LLM Inference + Gemma 3 1B int4.
+ * The .task is not in the APK. Prefer {@code filesDir/models/}, else adb-pushed
+ * {@link #DEFAULT_MODEL_PATH}.
  */
 public final class MediaPipeModelPort implements ModelPort {
-    public static final String DEFAULT_MODEL_PATH = "/data/local/tmp/llm/gemma3-1b-it-int4.task";
+    public static final String DEFAULT_MODEL_PATH = ModelArtifact.DEV_FALLBACK_PATH;
 
     private final Context context;
     private final File modelFile;
@@ -26,7 +27,11 @@ public final class MediaPipeModelPort implements ModelPort {
     }
 
     public static MediaPipeModelPort fromDefaultPath(Context context) {
-        return new MediaPipeModelPort(context, new File(DEFAULT_MODEL_PATH));
+        return new MediaPipeModelPort(context, ModelFiles.resolve(context));
+    }
+
+    public static MediaPipeModelPort create(Context context) {
+        return fromDefaultPath(context);
     }
 
     @Override
