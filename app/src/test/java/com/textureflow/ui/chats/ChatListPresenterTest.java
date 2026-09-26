@@ -6,7 +6,14 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.textureflow.data.StoredNotificationEvent;
+import com.textureflow.intelligence.api.AssessmentSource;
+import com.textureflow.intelligence.api.AttentionAssessment;
+import com.textureflow.intelligence.api.AttentionLevel;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -33,6 +40,60 @@ public final class ChatListPresenterTest {
     public void unrelatedPackageIsNotConversationCandidate() {
         assertFalse(ChatListPresenter.isConversationCandidate(
                 event("e1", "Bank", "com.bank.app", "Bank", "OTP", 1L, "NORMAL", 0.2, Set.of())));
+    }
+
+    @Test
+    public void ranksUrgentThenImportantThenRecency() {
+        List<StoredNotificationEvent> events = List.of(
+                event("old-urgent", "Pat", "com.whatsapp", "WhatsApp", "now", 5L, "NORMAL", 0.2, Set.of("REPLY")),
+                event("fresh-normal", "Sam", "com.whatsapp", "WhatsApp", "later", 40L, "NORMAL", 0.2, Set.of("REPLY")),
+                event("mid-important", "Lee", "com.whatsapp", "WhatsApp", "due", 20L, "NORMAL", 0.2, Set.of("REPLY")));
+        Map<String, AttentionAssessment> assessments = Map.of(
+                "pat", assessment("pat", "old-urgent", AttentionLevel.URGENT, "time pressure",
+                        AssessmentSource.DETERMINISTIC),
+                "lee", assessment("lee", "mid-important", AttentionLevel.IMPORTANT, "needs a reply",
+                        AssessmentSource.DETERMINISTIC));
+        List<PersonTimeline> people = ChatListPresenter.groupPeople(events, Set.of(), assessments);
+        assertEquals(List.of("Pat", "Lee", "Sam"), people.stream().map(person -> person.name).toList());
+        assertEquals("time pressure", people.get(0).assessment.getReason());
+        assertEquals(AttentionLevel.IMPORTANT, people.get(1).assessment.getLevel());
+        assertNull(people.get(2).assessment);
+    }
+
+    @Test
+    public void sameLevelKeepsRecency() {
+        List<StoredNotificationEvent> events = List.of(
+                event("older", "Pat", "com.whatsapp", "WhatsApp", "earlier", 10L, "NORMAL", 0.2, Set.of("REPLY")),
+                event("newer", "Sam", "com.whatsapp", "WhatsApp", "later", 30L, "NORMAL", 0.2, Set.of("REPLY")));
+        Map<String, AttentionAssessment> assessments = Map.of(
+                "pat", assessment("pat", "older", AttentionLevel.IMPORTANT, "a", AssessmentSource.DETERMINISTIC),
+                "sam", assessment("sam", "newer", AttentionLevel.IMPORTANT, "b", AssessmentSource.DETERMINISTIC));
+        List<PersonTimeline> people = ChatListPresenter.groupPeople(events, Set.of(), assessments);
+        assertEquals("Sam", people.get(0).name);
+        assertEquals("Pat", people.get(1).name);
+    }
+
+    @Test
+    public void matchesAssessmentByLeadEventIdWhenPersonIdDiffers() {
+        List<StoredNotificationEvent> events = List.of(
+                event("e-sam", "Sam", "com.whatsapp", "WhatsApp", "hi", 10L, "NORMAL", 0.2, Set.of("REPLY")));
+        Map<String, AttentionAssessment> assessments = Map.of(
+                "person_sam", assessment("person_sam", "e-sam", AttentionLevel.URGENT, "direct request",
+                        AssessmentSource.ON_DEVICE_MODEL));
+        List<PersonTimeline> people = ChatListPresenter.groupPeople(events, Set.of(), assessments);
+        assertEquals(AttentionLevel.URGENT, people.get(0).assessment.getLevel());
+        assertTrue(ChatListPresenter.isOnDeviceModel(people.get(0).assessment));
+        assertEquals("Urgent · direct request", ChatListPresenter.reasonLine(people.get(0).assessment));
+    }
+
+    @Test
+    public void glowIntensityIsStrongestForUrgent() {
+        assertTrue(ChatListPresenter.glowIntensity(AttentionLevel.URGENT)
+                > ChatListPresenter.glowIntensity(AttentionLevel.IMPORTANT));
+        assertTrue(ChatListPresenter.glowIntensity(AttentionLevel.IMPORTANT)
+                > ChatListPresenter.glowIntensity(AttentionLevel.NORMAL));
+        assertTrue(ChatListPresenter.glowIntensity(AttentionLevel.NORMAL)
+                > ChatListPresenter.glowIntensity(AttentionLevel.LOW));
     }
 
     @Test
@@ -74,7 +135,7 @@ public final class ChatListPresenterTest {
     }
 
     @Test
-    public void attentionQueueRanksUrgentThenReplyThenScore() {
+    public void attentionQueueRanksUrgentThenImportantThenReply() {
         StoredNotificationEvent ordinaryReply = event(
                 "a", "Sam", "com.whatsapp", "WhatsApp", "hi", 10L, "NORMAL", 0.4, Set.of("REPLY"));
         StoredNotificationEvent urgent = event(
@@ -87,8 +148,8 @@ public final class ChatListPresenterTest {
                 new LinkedHashMap<>(),
                 100L);
         assertEquals("b", queue.get(0).getEventId());
-        assertEquals("a", queue.get(1).getEventId());
-        assertEquals("c", queue.get(2).getEventId());
+        assertEquals("c", queue.get(1).getEventId());
+        assertEquals("a", queue.get(2).getEventId());
     }
 
     @Test
@@ -144,12 +205,95 @@ public final class ChatListPresenterTest {
     }
 
     @Test
+    public void attentionQueuePrefersAssessmentLevelOverStoredPriority() {
+        StoredNotificationEvent storedNormal = event(
+                "a", "Sam", "com.whatsapp", "WhatsApp", "hi", 10L, "NORMAL", 0.4, Set.of("REPLY"));
+        StoredNotificationEvent storedUrgent = event(
+                "b", "Pat", "com.whatsapp", "WhatsApp", "later", 20L, "URGENT", 0.9, Set.of("REPLY"));
+        Map<String, AttentionAssessment> assessments = Map.of(
+                "a", assessment("sam", "a", AttentionLevel.URGENT, "needs you",
+                        AssessmentSource.DETERMINISTIC),
+                "b", assessment("pat", "b", AttentionLevel.IMPORTANT, "follow up",
+                        AssessmentSource.DETERMINISTIC));
+        List<StoredNotificationEvent> queue = ChatListPresenter.attentionQueue(
+                List.of(storedNormal, storedUrgent),
+                Set.of(),
+                new LinkedHashMap<>(),
+                100L,
+                assessments);
+        assertEquals("a", queue.get(0).getEventId());
+        assertEquals(AttentionLevel.URGENT, ChatListPresenter.effectiveLevel(queue.get(0), assessments));
+    }
+
+    @Test
+    public void needsMeSpokenUsesDeterministicTopItems() {
+        assertEquals("You are all caught up.",
+                ChatListPresenter.needsMeSpoken(List.of(), Map.of()));
+        StoredNotificationEvent urgent = event(
+                "a", "Sam", "com.whatsapp", "WhatsApp", "Come down", 10L, "NORMAL", 0.2, Set.of("REPLY"));
+        StoredNotificationEvent important = event(
+                "b", "Maya", "com.whatsapp", "WhatsApp", "Dinner still on?", 8L, "NORMAL", 0.2, Set.of("REPLY"));
+        Map<String, AttentionAssessment> assessments = Map.of(
+                "a", assessment("sam", "a", AttentionLevel.URGENT, "direct request",
+                        AssessmentSource.DETERMINISTIC),
+                "b", assessment("maya", "b", AttentionLevel.IMPORTANT, "question",
+                        AssessmentSource.DETERMINISTIC));
+        String spoken = ChatListPresenter.needsMeSpoken(List.of(urgent, important), assessments);
+        assertTrue(spoken.startsWith("Two things need you."));
+        assertTrue(spoken.contains("Urgent from Sam on WhatsApp. Come down"));
+        assertTrue(spoken.contains("Also from Maya on WhatsApp. Dinner still on?"));
+        assertTrue(ChatListPresenter.looksLikeNeedsMe("what needs me"));
+        assertTrue(ChatListPresenter.looksLikeNeedsMe("what's urgent"));
+        assertFalse(ChatListPresenter.looksLikeNeedsMe("send that"));
+    }
+
+    @Test
+    public void presenterSourcesStayAndroidImportFree() throws Exception {
+        for (String leaf : List.of(
+                "ChatListPresenter.java",
+                "ProposalFlowPresenter.java",
+                "PersonTimeline.java",
+                "ChatBubble.java")) {
+            Path path = presenterSource(leaf);
+            String text = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+            assertFalse(leaf + " imported android", text.contains("import android."));
+        }
+    }
+
+    @Test
     public void emptyFallbackAndJoinStatusMatchPreviousHelpers() {
         assertEquals("fallback", ChatListPresenter.emptyFallback("  ", "fallback"));
         assertEquals("hi", ChatListPresenter.emptyFallback(" hi ", "fallback"));
         assertEquals("Ready", ChatListPresenter.joinStatus("Ready", "  "));
         assertEquals("Ready · online", ChatListPresenter.joinStatus("Ready", "online"));
         assertEquals("session", ChatListPresenter.safeId("  ", "session"));
+    }
+
+    private static AttentionAssessment assessment(
+            String personId,
+            String leadEventId,
+            AttentionLevel level,
+            String reason,
+            AssessmentSource source) {
+        return new AttentionAssessment(
+                "tick-" + leadEventId,
+                personId,
+                "com.whatsapp",
+                leadEventId,
+                1,
+                0.7,
+                level,
+                reason,
+                0.8,
+                null,
+                source);
+    }
+
+    private static Path presenterSource(String leaf) {
+        Path cwd = Paths.get("").toAbsolutePath();
+        Path fromModule = cwd.resolve("src/main/java/com/textureflow/ui/chats").resolve(leaf);
+        if (Files.isRegularFile(fromModule)) return fromModule;
+        return cwd.resolve("app/src/main/java/com/textureflow/ui/chats").resolve(leaf);
     }
 
     private static StoredNotificationEvent event(
