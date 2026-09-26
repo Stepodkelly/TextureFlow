@@ -62,7 +62,12 @@ public final class TextureFlowDatabase extends SQLiteOpenHelper {
     };
 
     public TextureFlowDatabase(Context context) {
-        super(context.getApplicationContext(), DATABASE_NAME, null, DATABASE_VERSION);
+        this(context, DATABASE_NAME);
+    }
+
+    /** Named file, or {@code null} for an in-memory database (tests). */
+    public TextureFlowDatabase(Context context, String databaseName) {
+        super(context.getApplicationContext(), databaseName, null, DATABASE_VERSION);
         setWriteAheadLoggingEnabled(true);
     }
 

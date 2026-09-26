@@ -4,7 +4,7 @@ SQLite / local stores so the app still works if the network is down.
 
 | Important file | Role |
 |----------------|------|
-| `TextureFlowDatabase.java` | Database setup / migrations (`onUpgrade` chain; current `DATABASE_VERSION` is 2) |
+| `TextureFlowDatabase.java` | Database setup / migrations (`onUpgrade` chain; current `DATABASE_VERSION` is 2). `SqliteLedger` writes the v2 intelligence tables. |
 | `NotificationRepository.java` | Saved notification events |
 | `OutboxStore.java` | Cloud-sync outbox rows (≠ `bank/` messenger outbox) |
 | `ListenerHealthStore.java` | Listener connected / callback / reconcile freshness |
