@@ -12,7 +12,7 @@ types. Later streams fill in triage, shield, ledger, and the engine.
 | `ledger/` | Tick/assessment/proposal records; `InMemoryLedger` + `SqliteLedger` | Stream C |
 | `evals/` | `TriageEvalTarget` + `DeterministicTriageTarget` for the Java harness | Stream D |
 | `model/` | `ModelPort`, `ModelLifecycle`, `CapabilityProbe`, download; MediaPipe is debug-only | Stream H |
-| `roles/` | `TriageRole` (pure Java; inject `ModelPort`) | Stream H |
+| `roles/` | `TriageRole`, `SummarizerRole`, `DrafterRole` (pure Java; inject `ModelPort`) | Stream H / K |
 | `engine/` | `DefaultAttentionEngine`, A0–A5, confidence merge, `EventStore` | Stream G |
 | `jobs/` | Built-in local job classes (`triage`, `summary`, `draft`) | Stream G |
 
