@@ -18,10 +18,22 @@ import com.textureflow.data.DeviceIdentity;
 import com.textureflow.data.ListenerHealthStore;
 import com.textureflow.data.NotificationRepository;
 import com.textureflow.data.OutboxStore;
+import com.textureflow.data.StoredNotificationEvent;
 import com.textureflow.data.TextureFlowDatabase;
+import com.textureflow.intelligence.api.AttentionEngine;
+import com.textureflow.intelligence.api.EventSignal;
+import com.textureflow.intelligence.engine.CapabilityProfiles;
+import com.textureflow.intelligence.engine.DefaultAttentionEngine;
+import com.textureflow.intelligence.engine.EventStore;
+import com.textureflow.intelligence.engine.PersonKeys;
+import com.textureflow.intelligence.engine.StoredEvent;
 import com.textureflow.intelligence.ledger.IntelligenceLedger;
 import com.textureflow.intelligence.ledger.SqliteLedger;
+import com.textureflow.intelligence.model.NoModelPort;
 import com.textureflow.policy.CommandPolicy;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public final class NotificationRuntime {
     private static final String OWNER_PREFERENCES = "textureflow-owner";
@@ -38,6 +50,8 @@ public final class NotificationRuntime {
     private final IntelligenceLedger ledger;
     private final LiveActionRegistry liveActions;
     private final NotificationBank bank;
+    private final Object engineLock = new Object();
+    private volatile AttentionEngine attentionEngine;
 
     private NotificationRuntime(Context context) {
         this.context = context.getApplicationContext();
@@ -73,6 +87,51 @@ public final class NotificationRuntime {
     public LiveActionRegistry liveActions() { return liveActions; }
     public NotificationBank bank() { return bank; }
 
+    public AttentionEngine attention() {
+        AttentionEngine current = attentionEngine;
+        if (current != null) {
+            return current;
+        }
+        synchronized (engineLock) {
+            if (attentionEngine == null) {
+                attentionEngine = new DefaultAttentionEngine(
+                        new RepositoryEventStore(),
+                        ledger,
+                        new NoModelPort(),
+                        CapabilityProfiles.deterministicOnly());
+            }
+            return attentionEngine;
+        }
+    }
+
+    /** Alias so Stream I's runtime lookup finds the engine. */
+    public AttentionEngine attentionEngine() {
+        return attention();
+    }
+
+    public void setAttentionEngine(AttentionEngine engine) {
+        synchronized (engineLock) {
+            attentionEngine = engine;
+        }
+    }
+
+    /** Never waits for a model. {@link AttentionEngine#onEvent} only enqueues. */
+    public void enqueueAttention(EventSignal signal) {
+        if (signal == null) {
+            return;
+        }
+        attention().onEvent(signal);
+    }
+
+    static EventSignal attentionSignal(StoredNotificationEvent event, EventSignal.Kind kind) {
+        return new EventSignal(
+                kind,
+                event.getEventId(),
+                event.getVersion(),
+                PersonKeys.resolve(event.getSenderName(), event.getPackageName()),
+                event.getPackageName());
+    }
+
     /** Called by authenticated transport setup; this is an opaque account ID, not a secret token. */
     public void configureOwner(String ownerId) {
         if (ownerId == null || ownerId.trim().isEmpty()) {
@@ -91,6 +150,39 @@ public final class NotificationRuntime {
                 context, deviceId, liveActions, notifications, receipts,
                 new CommandPolicy(ownerId, deviceId));
         return executor.execute(command, confirmation, control);
+    }
+
+    private final class RepositoryEventStore implements EventStore {
+        @Override
+        public List<StoredEvent> getLiveForPerson(String personId) {
+            List<StoredEvent> live = new ArrayList<>();
+            for (StoredNotificationEvent event : notifications.getLiveEvents()) {
+                StoredEvent mapped = mapEvent(event);
+                if (personId == null || personId.isEmpty() || personId.equals(mapped.getPersonId())) {
+                    live.add(mapped);
+                }
+            }
+            return live;
+        }
+
+        @Override
+        public StoredEvent getByEventId(String eventId) {
+            StoredNotificationEvent event = notifications.getEvent(eventId);
+            return event == null ? null : mapEvent(event);
+        }
+
+        private StoredEvent mapEvent(StoredNotificationEvent event) {
+            return new StoredEvent(
+                    event.getEventId(),
+                    event.getVersion(),
+                    PersonKeys.resolve(event.getSenderName(), event.getPackageName()),
+                    event.getPackageName(),
+                    event.getAppLabel() == null ? "" : event.getAppLabel(),
+                    event.getSenderName() == null ? "" : event.getSenderName(),
+                    event.getBody() == null ? "" : event.getBody(),
+                    event.getPostedAt(),
+                    event.getStatus());
+        }
     }
 
 }

@@ -11,10 +11,15 @@ import android.os.Bundle;
 import android.os.Parcelable;
 
 import com.textureflow.actions.NotificationActionInspector;
+import com.textureflow.intelligence.triage.DeterministicTriage;
+import com.textureflow.intelligence.triage.IdentityResolution;
+import com.textureflow.intelligence.triage.IdentityResolver;
+import com.textureflow.intelligence.triage.PriorityAssessment;
+import com.textureflow.intelligence.triage.PriorityResult;
+import com.textureflow.intelligence.triage.TriageEvent;
 
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 
 public final class NotificationNormalizer {
@@ -56,7 +61,8 @@ public final class NotificationNormalizer {
             capabilities.add("SNOOZE");
         }
 
-        Priority priority = priority(body);
+        Priority priority = computePriority(
+                body, title, snapshot.getPackageName(), snapshot.getPostTime(), System.currentTimeMillis());
         String eventId = ContentFingerprint.eventId(
                 deviceId, snapshot.getPackageName(), snapshot.getKey());
         String contentHash = ContentFingerprint.sha256(
@@ -129,15 +135,37 @@ public final class NotificationNormalizer {
         }
     }
 
-    private static Priority priority(String body) {
-        String normalized = nullToEmpty(body).toLowerCase(Locale.US);
-        if (normalized.matches(".*\\b(urgent|asap|emergency|locked out|downstairs|outside)\\b.*")) {
-            return new Priority(0.90, "URGENT", "The message contains an immediate-attention signal.");
-        }
-        if (normalized.contains("?")) {
-            return new Priority(0.72, "IMPORTANT", "A direct question may need a response.");
-        }
-        return new Priority(0.50, "NORMAL", "A recent notification is available for review.");
+    /** Crude keyword path kept as a one-arg wrapper; scoring now goes through triage. */
+    static Priority priority(String body) {
+        return computePriority(body, null, "", System.currentTimeMillis(), System.currentTimeMillis());
+    }
+
+    /**
+     * Package-visible so unit tests can score without an Android {@code Context}.
+     * Identity is provisional/resolved from the sender name. DB column names stay
+     * {@code priority_score}/{@code priority_level}/{@code priority_reason}.
+     */
+    static Priority computePriority(
+            String body,
+            String senderName,
+            String packageName,
+            Long postedAtMillis,
+            long nowMillis) {
+        TriageEvent event = new TriageEvent(
+                "",
+                packageName,
+                nullToEmpty(body),
+                postedAtMillis,
+                null,
+                senderName,
+                null);
+        IdentityResolution identity = new IdentityResolver().resolveEvent(event);
+        PriorityResult result = DeterministicTriage.assess(event, identity, nowMillis);
+        PriorityAssessment assessment = result.getAssessment();
+        return new Priority(
+                assessment.getScore(),
+                assessment.getLevel().name(),
+                assessment.getReason());
     }
 
     private static String clean(String value) {
@@ -171,7 +199,7 @@ public final class NotificationNormalizer {
         MessageParts(String sender, String body) { this.sender = sender; this.body = body; }
     }
 
-    private static final class Priority {
+    static final class Priority {
         final double score;
         final String level;
         final String reason;

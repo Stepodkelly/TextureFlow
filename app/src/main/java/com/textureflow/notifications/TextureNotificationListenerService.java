@@ -20,6 +20,7 @@ import com.textureflow.bank.BankState;
 import com.textureflow.data.EventWriteResult;
 import com.textureflow.data.ListenerHealthStore;
 import com.textureflow.data.StoredNotificationEvent;
+import com.textureflow.intelligence.api.EventSignal;
 import com.textureflow.policy.NotificationIngestionPolicy;
 
 import java.lang.ref.WeakReference;
@@ -254,6 +255,12 @@ public final class TextureNotificationListenerService extends NotificationListen
             NormalizedNotification normalized = normalizer.normalize(this, snapshot, runtime.getDeviceId());
             EventWriteResult write = runtime.notifications().upsertActive(normalized, now);
             StoredNotificationEvent stored = write.getEvent();
+            if (write.enqueuedSync()) {
+                EventSignal.Kind kind = write.getChange() == EventWriteResult.Change.INSERTED
+                        ? EventSignal.Kind.POSTED
+                        : EventSignal.Kind.UPDATED;
+                runtime.enqueueAttention(NotificationRuntime.attentionSignal(stored, kind));
+            }
             runtime.liveActions().put(runtime.liveActions().createEntry(
                     stored.getEventId(), stored.getVersion(), stored.getActionFingerprint(), snapshot));
             if (normalized.getCapabilities().contains("REPLY")) {
@@ -295,7 +302,11 @@ public final class TextureNotificationListenerService extends NotificationListen
             runtime.health().callback(now);
             String eventId = ContentFingerprint.eventId(
                     runtime.getDeviceId(), statusBarNotification.getPackageName(), statusBarNotification.getKey());
-            runtime.notifications().markRemoved(eventId, now);
+            EventWriteResult write = runtime.notifications().markRemoved(eventId, now);
+            if (write != null && write.enqueuedSync()) {
+                runtime.enqueueAttention(
+                        NotificationRuntime.attentionSignal(write.getEvent(), EventSignal.Kind.REMOVED));
+            }
             runtime.liveActions().remove(eventId);
         } catch (RuntimeException failure) {
             runtime.health().failed(now, failure);

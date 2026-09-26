@@ -12,6 +12,8 @@ types. Later streams fill in triage, shield, ledger, and the engine.
 | `ledger/` | Tick/assessment/proposal records; `InMemoryLedger` now, `SqliteLedger` later | Stream C |
 | `evals/` | `TriageEvalTarget` + `DeterministicTriageTarget` for the Java harness | Stream D |
 | `model/` | `ModelPort` / `NoModelPort`; MediaPipe port is debug-only | Stream E |
+| `engine/` | `DefaultAttentionEngine`, A0–A5, confidence merge, `EventStore` | Stream G |
+| `jobs/` | Built-in local job classes (`triage`, `summary`, `draft`) | Stream G |
 
 `api/` must stay free of Android notification handles. No `execute` / `send`
 methods. The TypeScript package remains the ranking oracle until Stream A
