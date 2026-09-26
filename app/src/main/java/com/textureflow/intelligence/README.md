@@ -9,9 +9,10 @@ types. Later streams fill in triage, shield, ledger, and the engine.
 | `triage/` | Deterministic priority + identity (port of `priority.ts`, `aliases.ts`) | Stream A |
 | `shield/` | Context shield, token budget, untrusted wrap, injection flag | Stream B |
 | `policy/` | PolicyGate §6.4 rules, schema validator, proposal binding | Stream B |
-| `ledger/` | Tick/assessment/proposal records; `InMemoryLedger` now, `SqliteLedger` later | Stream C |
+| `ledger/` | Tick/assessment/proposal records; `InMemoryLedger` + `SqliteLedger` | Stream C |
 | `evals/` | `TriageEvalTarget` + `DeterministicTriageTarget` for the Java harness | Stream D |
-| `model/` | `ModelPort` / `NoModelPort`; MediaPipe port is debug-only | Stream E |
+| `model/` | `ModelPort`, `ModelLifecycle`, `CapabilityProbe`, download; MediaPipe is debug-only | Stream H |
+| `roles/` | `TriageRole` (pure Java; inject `ModelPort`) | Stream H |
 | `engine/` | `DefaultAttentionEngine`, A0–A5, confidence merge, `EventStore` | Stream G |
 | `jobs/` | Built-in local job classes (`triage`, `summary`, `draft`) | Stream G |
 
