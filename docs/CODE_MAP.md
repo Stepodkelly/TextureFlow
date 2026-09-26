@@ -23,6 +23,12 @@ Packages are one job each. Prefer the package `README.md` for a file list.
 | Live Convex sync (optional, not default) | `connection/ConvexHttpGateway.java` |
 | Store events / health on the phone | `data/` |
 | Play haptic / audio cues | `texture/` |
+| Rank notifications on-device | `intelligence/engine/DefaultAttentionEngine.java` |
+| Deterministic priority / injection | `intelligence/triage/`, `intelligence/policy/` |
+| Persist ticks / wipe proposal text | `intelligence/ledger/SqliteLedger.java` |
+| Download Gemma / probe this phone | `intelligence/model/`, Settings → Intelligence |
+| Summary + literal-words draft | `intelligence/roles/` |
+| Local e2e harness | `tools/e2e/run.sh` |
 
 ### Suggested read order inside `app/`
 
@@ -54,13 +60,18 @@ Tests mirror the same packages under `app/src/test/java/com/textureflow/`.
 | Talk to Convex | `texture-bridge/src/adapters/convex.ts` |
 | Fake data for demos | `texture-bridge/src/adapters/fixture.ts` |
 
-## Intelligence (`intelligence/`)
+## Intelligence
+
+Java in the APK is the production path. TypeScript remains the ranking oracle / eval source.
 
 | I want to… | Look here |
 |------------|-----------|
-| Rank / prioritize events | `intelligence/src/priority.ts` |
-| Safe fallback when AI is off | `intelligence/src/fallback.ts` |
-| Public entry | `intelligence/src/index.ts` |
+| Attention tick / A0–A5 | `app/.../intelligence/engine/` |
+| Triage / summary / draft roles | `app/.../intelligence/roles/` |
+| Model lifecycle + download | `app/.../intelligence/model/` |
+| Eval cases + baseline | `shared/evals/` |
+| TS ranking oracle | `intelligence/src/priority.ts` |
+| TS fallback | `intelligence/src/fallback.ts` |
 
 ## Shared + tools
 
@@ -80,3 +91,6 @@ Tests mirror the same packages under `app/src/test/java/com/textureflow/`.
 | [`THREAT_MODEL.md`](THREAT_MODEL.md) | Security threats |
 | [`TEST_PLAN.md`](TEST_PLAN.md) | How we test |
 | [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md) | Demo walkthrough |
+| [`INTELLIGENCE_PRODUCTION.md`](INTELLIGENCE_PRODUCTION.md) | On-device intelligence architecture (Part I built) |
+| [`BUILD_PLAN.md`](BUILD_PLAN.md) | Stream ownership / wave order |
+| [`MODEL_BENCHMARK.md`](MODEL_BENCHMARK.md) | Xiaomi Gemma 3 1B MediaPipe numbers |

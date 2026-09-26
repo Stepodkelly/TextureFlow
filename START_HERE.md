@@ -20,7 +20,7 @@ OPTIONAL / STUBBED (safe to ignore for now)
 ──────────
 convex/           cloud backend (stubbed)
 texture-bridge/   VoiceOS MCP bridge (fixture-only)
-intelligence/     urgency helper (works offline)
+intelligence/     TS ranking oracle (Java engine lives in app/)
 shared/           shared types
 tools/            scripts (live Convex checks skip without credentials)
 docs/             architecture notes (partly historical)
@@ -30,10 +30,10 @@ docs/             architecture notes (partly historical)
 
 | Folder | Plain English | When you open it |
 |--------|---------------|------------------|
-| **`app/`** | The Android phone app (what you install) | UI, notifications, bank, replies, haptics — see `app/README.md` |
+| **`app/`** | The Android phone app (what you install) | UI, notifications, on-device intelligence, bank, replies — see `app/README.md` |
 | **`convex/`** | Cloud backend — **stubbed / ignore for now** | Only if restoring live sync later |
 | **`texture-bridge/`** | Voice/MCP bridge — **fixture-only stub** | Only if restoring VoiceOS later |
-| **`intelligence/`** | Decides what is urgent (with safe fallback) | Priority / ranking logic |
+| **`intelligence/`** | TypeScript ranking oracle + evals | Golden parity for the Java engine in `app/` |
 | **`shared/`** | Shared contracts used by several parts | Types that must match everywhere |
 | **`tools/`** | Scripts to test and demo | Running checks, smoke tests |
 | **`docs/`** | Longer explanations | Deep reading after this map |

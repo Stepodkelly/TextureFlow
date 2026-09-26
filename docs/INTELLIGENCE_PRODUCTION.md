@@ -1,6 +1,6 @@
 # TextureFlow — Production Intelligence Architecture
 
-**Status:** Proposal for review. Nothing in this document is implemented yet unless marked **(exists)**.  
+**Status:** Part I is implemented on `build/W0-foundation` (Wave 0–3). Deviations from this text: `SQLiteOpenHelper` not Room; one structured call first (Triage), then Summarizer/Drafter; **no SkepticRole** yet; MediaPipe + Gemma 3 1B int4 (not Gemma 4); Part II stays contracts-only.  
 **Derived from:** OverSwarm — Production Architecture Plan (`overswarm-hackathon/docs/PRODUCTION_ARCHITECTURE.md`)  
 **Scope:** The intelligence layer of the TextureFlow / Moth Market Android app: how it understands notifications, ranks attention, summarizes, drafts replies, and hands proposals to the user. Not in scope: UI styling, the albedo background, Convex sync, VoiceOS.  
 **Related:** [`ARCHITECTURE.md`](ARCHITECTURE.md), [`THREAT_MODEL.md`](THREAT_MODEL.md), [`../intelligence/README.md`](../intelligence/README.md), [`../app/src/main/java/com/textureflow/bank/README.md`](../app/src/main/java/com/textureflow/bank/README.md)

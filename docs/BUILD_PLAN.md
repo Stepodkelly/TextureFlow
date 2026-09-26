@@ -1,6 +1,6 @@
 # TextureFlow — Build Plan for Sub-Agents
 
-> Status: **plan only, nothing built yet.**
+> Status: **Waves 0–3 landed** on `build/W0-foundation`. Remaining: optional Skeptic if draft evals justify it; Part II helpers stay out of scope.
 > Source of truth for *what* to build: [`INTELLIGENCE_PRODUCTION.md`](INTELLIGENCE_PRODUCTION.md) (Part I + Part II §33–§34 contracts).
 > This file says *who builds what, in what order, touching which files*.
 
