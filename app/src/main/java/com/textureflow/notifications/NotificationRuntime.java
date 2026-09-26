@@ -19,6 +19,8 @@ import com.textureflow.data.ListenerHealthStore;
 import com.textureflow.data.NotificationRepository;
 import com.textureflow.data.OutboxStore;
 import com.textureflow.data.TextureFlowDatabase;
+import com.textureflow.intelligence.ledger.IntelligenceLedger;
+import com.textureflow.intelligence.ledger.SqliteLedger;
 import com.textureflow.policy.CommandPolicy;
 
 public final class NotificationRuntime {
@@ -33,6 +35,7 @@ public final class NotificationRuntime {
     private final OutboxStore outbox;
     private final ActionReceiptStore receipts;
     private final ListenerHealthStore health;
+    private final IntelligenceLedger ledger;
     private final LiveActionRegistry liveActions;
     private final NotificationBank bank;
 
@@ -44,6 +47,7 @@ public final class NotificationRuntime {
         this.outbox = new OutboxStore(database);
         this.receipts = new ActionReceiptStore(database);
         this.health = new ListenerHealthStore(database);
+        this.ledger = new SqliteLedger(database);
         this.liveActions = new LiveActionRegistry();
         this.bank = new NotificationBank(
                 new BankStore(this.context),
@@ -65,6 +69,7 @@ public final class NotificationRuntime {
     public OutboxStore outbox() { return outbox; }
     public ActionReceiptStore receipts() { return receipts; }
     public ListenerHealthStore health() { return health; }
+    public IntelligenceLedger ledger() { return ledger; }
     public LiveActionRegistry liveActions() { return liveActions; }
     public NotificationBank bank() { return bank; }
 

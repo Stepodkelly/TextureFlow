@@ -6,7 +6,7 @@ keeps the Android `NotificationListenerService` from silently locking out.
 ## Read in this order
 
 1. **Ingest** — `TextureNotificationListenerService` → `NotificationNormalizer`
-2. **Wiring** — `NotificationRuntime` (stores, bank, executor)
+2. **Wiring** — `NotificationRuntime` (stores, intelligence ledger, bank, executor)
 3. **Durability** — `ListenerHealthPolicy` → watchdog / health job / recovery
 
 ## Files by job
@@ -20,7 +20,7 @@ keeps the Android `NotificationListenerService` from silently locking out.
 | Fresh vs locked-out rules | `ListenerHealthPolicy.java` |
 | Rebind backoff | `NotificationRebindPolicy.java` |
 | ~30s AlarmManager heartbeat | `NotificationWatchdogScheduler.java`, `NotificationWatchdogReceiver.java` |
-| Periodic JobScheduler check | `NotificationHealthJobService.java` |
+| Periodic JobScheduler check + 14-day ledger purge | `NotificationHealthJobService.java` |
 | Boot / package-replaced | `NotificationRecoveryReceiver.java` |
 
 ## Related

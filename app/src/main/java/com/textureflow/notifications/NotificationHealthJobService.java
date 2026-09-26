@@ -10,6 +10,7 @@ import android.provider.Settings;
 import android.text.TextUtils;
 
 import com.textureflow.data.ListenerHealthStore;
+import com.textureflow.intelligence.ledger.IntelligenceLedger;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -34,6 +35,10 @@ public final class NotificationHealthJobService extends JobService {
         }
     }
 
+    static long retentionCutoff(long now) {
+        return now - IntelligenceLedger.RETENTION_MILLIS;
+    }
+
     static boolean hasNotificationAccess(Context context) {
         String enabled = Settings.Secure.getString(
                 context.getContentResolver(), "enabled_notification_listeners");
@@ -55,13 +60,17 @@ public final class NotificationHealthJobService extends JobService {
             try {
                 Context application = getApplicationContext();
                 long now = System.currentTimeMillis();
+                NotificationRuntime runtime = NotificationRuntime.get(application);
+                try {
+                    runtime.ledger().purgeOlderThan(retentionCutoff(now));
+                } catch (RuntimeException ignored) {
+                    // Retention must not skip listener health.
+                }
                 if (!hasNotificationAccess(application)) {
-                    NotificationRuntime.get(application).health()
-                            .markStale(now, "notification access revoked");
+                    runtime.health().markStale(now, "notification access revoked");
                     return;
                 }
-                ListenerHealthStore.Snapshot health =
-                        NotificationRuntime.get(application).health().read();
+                ListenerHealthStore.Snapshot health = runtime.health().read();
                 boolean live = TextureNotificationListenerService.hasLiveConnection();
                 if (ListenerHealthPolicy.needsForceRestart(health, now, live)) {
                     TextureNotificationListenerService.forceStaleRebind(application);

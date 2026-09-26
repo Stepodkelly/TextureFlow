@@ -11,7 +11,6 @@ payload text is kept only until the proposal reaches a terminal status.
 | `SqliteLedger.java` | Production store on `TextureFlowDatabase` v2. Android SQLite. |
 | Record types | `TickRecord`, `AssessmentRecord`, `RoleRunRecord`, `ProposalRecord` |
 
-Retention is 14 days (`IntelligenceLedger.RETENTION_MILLIS`). Call
-`purgeOlderThan(now - RETENTION_MILLIS)` from
-`NotificationHealthJobService` or app start — those files are not owned
-here. Stream G should wire that call.
+Retention is 14 days (`IntelligenceLedger.RETENTION_MILLIS`).
+`NotificationHealthJobService` calls `purgeOlderThan` on the shared
+`NotificationRuntime` ledger each periodic run.
