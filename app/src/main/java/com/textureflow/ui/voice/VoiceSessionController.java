@@ -6,6 +6,8 @@ import android.view.View;
 
 import com.textureflow.actions.ActionType;
 import com.textureflow.data.StoredNotificationEvent;
+import com.textureflow.intelligence.api.AttentionAssessment;
+import com.textureflow.intelligence.api.AttentionLevel;
 import com.textureflow.texture.TextureCue;
 import com.textureflow.ui.ConversationalVoiceController;
 import com.textureflow.ui.EyeOfHorusView;
@@ -19,9 +21,14 @@ import com.textureflow.ui.nav.Page;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public final class VoiceSessionController {
+    private static final long NEEDS_ME_REFINE_MS = 8_000L;
+
     private final MainSurface surface;
+    private String lastNeedsMeSpoken = "";
+    private long needsMeOpenUntil;
 
     public VoiceSessionController(MainSurface surface) {
         this.surface = surface;
@@ -103,21 +110,44 @@ public final class VoiceSessionController {
         }
         List<StoredNotificationEvent> queue = surface.conversation.attentionQueue(
                 surface.runtime().notifications().getLiveEvents());
+        Map<String, AttentionAssessment> assessments =
+                surface.chats == null ? Map.of() : surface.chats.assessments();
+        String message = ChatListPresenter.needsMeSpoken(queue, assessments);
+        lastNeedsMeSpoken = message;
+        needsMeOpenUntil = System.currentTimeMillis() + NEEDS_ME_REFINE_MS;
         StoredNotificationEvent urgent = queue.isEmpty() ? null : queue.get(0);
-        String message;
-        if (urgent == null) {
-            message = "You are all caught up.";
-        } else {
-            message = "Urgent from " + ChatListPresenter.emptyFallback(urgent.getSenderName(), "someone")
-                    + " on " + ChatListPresenter.emptyFallback(urgent.getAppLabel(), "your phone") + ". "
-                    + ChatListPresenter.emptyFallback(urgent.getBody(), "Open TextureFlow for details.");
+        if (urgent != null) {
             surface.showPage(Page.CHATS);
-            surface.textureEngine.emit(TextureCue.ATTENTION_URGENT, urgent.getEventId(),
-                    surface.chats.legacy().attentionPanel);
+            if (ChatListPresenter.effectiveLevel(urgent, assessments)
+                    == AttentionLevel.URGENT) {
+                surface.textureEngine.emit(TextureCue.ATTENTION_URGENT, urgent.getEventId(),
+                        surface.chats.legacy().attentionPanel);
+            }
         }
         if (surface.activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                 == PackageManager.PERMISSION_GRANTED) surface.voiceController.speakAndListen(message);
         else surface.voiceController.speak(message);
+    }
+
+    /** Refine a recent "what needs me?" answer when a model assessment arrives. */
+    public void onAssessmentsUpdated() {
+        if (System.currentTimeMillis() > needsMeOpenUntil) return;
+        List<StoredNotificationEvent> queue = surface.conversation.attentionQueue(
+                surface.runtime().notifications().getLiveEvents());
+        Map<String, AttentionAssessment> assessments =
+                surface.chats == null ? Map.of() : surface.chats.assessments();
+        boolean modelArrived = false;
+        for (AttentionAssessment assessment : assessments.values()) {
+            if (ChatListPresenter.isOnDeviceModel(assessment)) {
+                modelArrived = true;
+                break;
+            }
+        }
+        if (!modelArrived) return;
+        String message = ChatListPresenter.needsMeSpoken(queue, assessments);
+        if (message.equals(lastNeedsMeSpoken)) return;
+        lastNeedsMeSpoken = message;
+        surface.voiceController.speak(message);
     }
 
     public void startVoiceTurn(View source) {
@@ -206,6 +236,10 @@ public final class VoiceSessionController {
                 && (normalized.equals("done") || normalized.equals("dismiss")
                 || normalized.equals("dismiss this") || normalized.equals("next"))) {
             conversation.selectResponseAction("Done");
+            return;
+        }
+        if (ChatListPresenter.looksLikeNeedsMe(normalized)) {
+            speakUrgentItem();
             return;
         }
         if (ChatListPresenter.looksLikeHistoryQuestion(normalized)) {

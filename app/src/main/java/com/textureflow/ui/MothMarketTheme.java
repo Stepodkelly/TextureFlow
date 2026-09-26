@@ -58,7 +58,11 @@ public final class MothMarketTheme {
 
     /** Soft card with a faint app-colored outer glow. */
     public static LayerDrawable glowingCard(Context context, int glowColor) {
-        GradientDrawable glow = roundRect(withAlpha(glowColor, 100), 30f, context);
+        return glowingCard(context, glowColor, 100);
+    }
+
+    public static LayerDrawable glowingCard(Context context, int glowColor, int glowAlpha) {
+        GradientDrawable glow = roundRect(withAlpha(glowColor, glowAlpha), 30f, context);
         GradientDrawable face = roundRect(SURFACE_RAISED, 28f, context);
         LayerDrawable layers = new LayerDrawable(new android.graphics.drawable.Drawable[]{glow, face});
         // Keep the face nearly flush with the view edge so overlap math matches what you see.
@@ -89,8 +93,12 @@ public final class MothMarketTheme {
     }
 
     public static void applyGlow(View view, Context context, int glowColor) {
-        view.setBackground(glowingCard(context, glowColor));
-        view.setElevation(dp(context, 3));
+        applyGlow(view, context, glowColor, 100);
+    }
+
+    public static void applyGlow(View view, Context context, int glowColor, int glowAlpha) {
+        view.setBackground(glowingCard(context, glowColor, glowAlpha));
+        view.setElevation(dp(context, glowAlpha >= 150 ? 5 : 3));
     }
 
     private static int withAlpha(int color, int alpha) {

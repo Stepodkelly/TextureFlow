@@ -11,6 +11,7 @@ import com.textureflow.ui.lighting.ReflectionLightsController;
 import com.textureflow.ui.nav.NavigationController;
 import com.textureflow.ui.nav.Page;
 import com.textureflow.ui.settings.SettingsPage;
+import com.textureflow.ui.intel.AttentionUiBinder;
 import com.textureflow.ui.voice.VoiceSessionController;
 
 import java.util.concurrent.ExecutorService;
@@ -34,6 +35,7 @@ public final class MainSurface {
     public FlowsPage flows;
     public ReflectionLightsController lights;
     public VoiceSessionController voice;
+    public AttentionUiBinder intel;
 
     public MainActivity.ConnectionState connectionState = MainActivity.ConnectionState.DISCONNECTED;
     public MainActivity.SessionState sessionState = MainActivity.SessionState.IDLE;

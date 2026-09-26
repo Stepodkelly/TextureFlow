@@ -9,12 +9,16 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.textureflow.actions.ActionType;
+import com.textureflow.actions.ConfirmedProposal;
 import com.textureflow.connection.ConnectionConfig;
 import com.textureflow.connection.ConnectionConfigStore;
 import com.textureflow.connection.CoreActionClient;
 import com.textureflow.connection.LocalCoreActionClient;
 import com.textureflow.connection.TextureFlowConnectionController;
 import com.textureflow.data.StoredNotificationEvent;
+import com.textureflow.intelligence.api.AttentionAssessment;
+import com.textureflow.intelligence.api.AttentionLevel;
+import com.textureflow.intelligence.api.ProposalDraft;
 import com.textureflow.notifications.TextureNotificationListenerService;
 import com.textureflow.texture.TextureCue;
 import com.textureflow.ui.EyeOfHorusView;
@@ -48,6 +52,8 @@ public final class ConversationController {
     private LocalCoreActionClient localActionClient;
     private StoredNotificationEvent activeProposalEvent;
     private boolean phoneActionBusy;
+    private final ProposalFlowPresenter proposalFlow = new ProposalFlowPresenter();
+    private String intelligenceProposalId;
 
     public ConversationController(MainSurface surface) {
         this.surface = surface;
@@ -67,7 +73,15 @@ public final class ConversationController {
 
     public List<StoredNotificationEvent> attentionQueue(List<StoredNotificationEvent> live) {
         return ChatListPresenter.attentionQueue(
-                live, handledAttentionKeys, hiddenEventUntil, System.currentTimeMillis());
+                live,
+                handledAttentionKeys,
+                hiddenEventUntil,
+                System.currentTimeMillis(),
+                surface.chats == null ? Map.of() : surface.chats.assessments());
+    }
+
+    public ProposalFlowPresenter proposalFlow() {
+        return proposalFlow;
     }
 
     public FrameLayout buildPage() {
@@ -118,6 +132,30 @@ public final class ConversationController {
         }
         surface.showPage(Page.CHAT);
         surface.textureEngine.playBoundaryBump(conversationMessages);
+        StoredNotificationEvent lead = latestReplyEvent(person);
+        if (lead != null && surface.intel != null) {
+            surface.intel.requestDraftFor(lead);
+            applyPendingDraftFor(lead);
+        }
+    }
+
+    private static StoredNotificationEvent latestReplyEvent(PersonTimeline person) {
+        StoredNotificationEvent lead = null;
+        for (StoredNotificationEvent event : person.events) {
+            if (!event.hasCapability("REPLY")) continue;
+            if (lead == null || event.getUpdatedAt() > lead.getUpdatedAt()) lead = event;
+        }
+        return lead;
+    }
+
+    private void applyPendingDraftFor(StoredNotificationEvent event) {
+        if (event == null || surface.intel == null) return;
+        for (ProposalDraft draft : surface.intel.pendingDrafts().values()) {
+            if (event.getEventId().equals(draft.getEventId())) {
+                offerProposalDraft(draft);
+                return;
+            }
+        }
     }
 
     private View messageBubble(boolean outbound, String body, long at) {
@@ -167,10 +205,23 @@ public final class ConversationController {
                     || !currentAttention.getEventId().equals(attention.getEventId())
                     || currentAttention.getVersion() != attention.getVersion()) {
                 currentAttention = attention;
+                String reason = attention.getPriorityReason();
+                boolean urgent = "URGENT".equals(attention.getPriorityLevel());
+                if (surface.chats != null) {
+                    AttentionAssessment assessment = ChatListPresenter.assessmentForEvent(
+                            attention, surface.chats.assessments());
+                    if (assessment != null) {
+                        reason = assessment.getReason();
+                        urgent = assessment.getLevel() == AttentionLevel.URGENT;
+                    }
+                }
                 renderAttention(attention.getEventId(), attention.getSenderName(), attention.getAppLabel(),
-                        attention.getBody(), attention.getPriorityReason(),
-                        "URGENT".equals(attention.getPriorityLevel()));
+                        attention.getBody(), reason, urgent);
                 renderResponseOptions(attention);
+                if (surface.intel != null) {
+                    surface.intel.requestDraftFor(attention);
+                    applyPendingDraftFor(attention);
+                }
             }
         }
     }
@@ -407,6 +458,8 @@ public final class ConversationController {
             legacy.confirmButton.setVisibility(View.GONE);
             legacy.cancelButton.setVisibility(View.GONE);
             currentProposalId = null;
+            intelligenceProposalId = null;
+            proposalFlow.clearActive();
         });
     }
 
@@ -497,8 +550,105 @@ public final class ConversationController {
         });
     }
 
+    public void offerProposalDraft(ProposalDraft draft) {
+        if (draft == null) return;
+        StoredNotificationEvent event = eventForDraft(draft);
+        int version = event == null ? draft.getEventVersion() : event.getVersion();
+        long now = System.currentTimeMillis();
+        ProposalFlowPresenter.OfferResult result = proposalFlow.offer(draft, version, now);
+        surface.activity.runOnUiThread(() -> {
+            ChatListController.LegacyControls legacy = surface.chats.legacy();
+            if (result == ProposalFlowPresenter.OfferResult.STALE) {
+                legacy.responseEditor.setText("");
+                legacy.responseStatus.setText("That suggestion is no longer current.");
+                legacy.responseStatus.setVisibility(View.VISIBLE);
+                return;
+            }
+            if (phoneActionBusy || activePhoneProposal != null) return;
+            intelligenceProposalId = draft.getProposalId();
+            currentProposalId = draft.getProposalId();
+            String readBack = ProposalFlowPresenter.readBackText(draft);
+            if (event != null && (currentAttention == null
+                    || !currentAttention.getEventId().equals(event.getEventId()))) {
+                currentAttention = event;
+            }
+            if (draft.getActionType() == ActionType.REPLY) {
+                legacy.responseEditor.setVisibility(View.VISIBLE);
+                legacy.responseEditor.setEnabled(true);
+                legacy.responseEditor.setText(draft.getReplyText());
+                legacy.responseEditor.setSelection(legacy.responseEditor.length());
+                legacy.responseTitle.setText("Proposed reply");
+            }
+            legacy.responseStatus.setText("Exact preview: " + readBack);
+            legacy.responseStatus.setVisibility(View.VISIBLE);
+            legacy.responseOptions.setVisibility(View.GONE);
+            legacy.confirmButton.setText(draft.getActionType() == ActionType.REPLY
+                    ? "Send now" : "Confirm");
+            legacy.confirmButton.setVisibility(View.VISIBLE);
+            legacy.confirmButton.setEnabled(true);
+            legacy.cancelButton.setText("Back to actions");
+            legacy.cancelButton.setVisibility(View.VISIBLE);
+            legacy.cancelButton.setEnabled(true);
+            surface.sessionState = MainActivity.SessionState.AWAITING_CONFIRMATION;
+            legacy.eyeView.setState(EyeOfHorusView.State.AWAITING_CONFIRMATION);
+            surface.textureEngine.emit(TextureCue.PROPOSAL_READY, draft.getProposalId(),
+                    legacy.responsePanel);
+            surface.voiceController.speakAndListen(readBack
+                    + " Say confirm to authorize it, change it, or cancel.");
+        });
+    }
+
+    public void onProposalInvalidated(String proposalId, String reason) {
+        boolean matched = proposalFlow.invalidate(proposalId, reason)
+                || (proposalId != null && proposalId.equals(intelligenceProposalId));
+        if (!matched) return;
+        surface.activity.runOnUiThread(() -> {
+            ChatListController.LegacyControls legacy = surface.chats.legacy();
+            intelligenceProposalId = null;
+            currentProposalId = null;
+            activePhoneProposal = null;
+            activeProposalEvent = null;
+            phoneActionBusy = false;
+            legacy.responseEditor.setText("");
+            legacy.responseEditor.setEnabled(true);
+            legacy.confirmButton.setVisibility(View.GONE);
+            legacy.cancelButton.setVisibility(View.GONE);
+            String detail = ChatListPresenter.emptyFallback(reason, "The suggestion is no longer valid.");
+            legacy.responseStatus.setText(detail);
+            legacy.responseStatus.setVisibility(View.VISIBLE);
+            if (currentAttention != null) {
+                renderResponseOptions(currentAttention);
+                legacy.responseOptions.setVisibility(View.VISIBLE);
+            }
+            surface.sessionState = MainActivity.SessionState.CANCELLED;
+            surface.textureEngine.emit(TextureCue.CANCELLED,
+                    ChatListPresenter.safeId(proposalId, "proposal"), legacy.responsePanel);
+        });
+    }
+
+    private StoredNotificationEvent eventForDraft(ProposalDraft draft) {
+        if (draft == null) return null;
+        if (currentAttention != null && draft.getEventId().equals(currentAttention.getEventId())) {
+            return currentAttention;
+        }
+        if (activeProposalEvent != null && draft.getEventId().equals(activeProposalEvent.getEventId())) {
+            return activeProposalEvent;
+        }
+        for (StoredNotificationEvent event : surface.runtime().notifications().getLiveEvents()) {
+            if (draft.getEventId().equals(event.getEventId())) return event;
+        }
+        for (StoredNotificationEvent event : surface.runtime().notifications().getRecentEvents(100)) {
+            if (draft.getEventId().equals(event.getEventId())) return event;
+        }
+        return null;
+    }
+
     public void requestConfirmation(View source) {
         ChatListController.LegacyControls legacy = surface.chats.legacy();
+        if (proposalFlow.active() != null && activePhoneProposal == null) {
+            confirmIntelligenceDraft();
+            return;
+        }
         if (activePhoneProposal != null) {
             confirmPhoneProposal();
             return;
@@ -514,8 +664,131 @@ public final class ConversationController {
         surface.actionRequestListener.onConfirmRequested(currentProposalId);
     }
 
+    private void confirmIntelligenceDraft() {
+        ChatListController.LegacyControls legacy = surface.chats.legacy();
+        ProposalDraft draft = proposalFlow.active();
+        if (draft == null || phoneActionBusy) return;
+        StoredNotificationEvent event = eventForDraft(draft);
+        long now = System.currentTimeMillis();
+        int version = event == null ? -1 : event.getVersion();
+        if (event == null || ProposalFlowPresenter.isStale(draft, version, now)) {
+            proposalFlow.invalidate(draft.getProposalId(), "The notification changed.");
+            legacy.responseEditor.setText("");
+            legacy.responseStatus.setText("That suggestion is no longer current.");
+            legacy.responseStatus.setVisibility(View.VISIBLE);
+            legacy.confirmButton.setVisibility(View.GONE);
+            legacy.cancelButton.setVisibility(View.GONE);
+            if (currentAttention != null) {
+                renderResponseOptions(currentAttention);
+                legacy.responseOptions.setVisibility(View.VISIBLE);
+            }
+            return;
+        }
+        String edited = draft.getActionType() == ActionType.REPLY
+                ? legacy.responseEditor.getText().toString().trim() : "";
+        Map<String, Object> payload = ProposalFlowPresenter.confirmPayload(draft, edited);
+        ConfirmedProposal confirmation;
+        try {
+            ConnectionConfig config = ConnectionConfigStore.load(
+                    surface.activity, surface.runtime().getDeviceId());
+            confirmation = ProposalFlowPresenter.toConfirmedProposal(
+                    draft,
+                    config.ownerId(),
+                    config.deviceId(),
+                    java.time.Instant.now().toString(),
+                    payload);
+        } catch (RuntimeException missing) {
+            finishPhoneActionFailure("Local configuration is unavailable.");
+            return;
+        }
+        if (confirmation.getEventId().isEmpty()
+                || confirmation.getExpectedEventVersion() != event.getVersion()) {
+            legacy.responseStatus.setText("That suggestion is no longer current.");
+            legacy.responseStatus.setVisibility(View.VISIBLE);
+            return;
+        }
+        proposalFlow.clearActive();
+        intelligenceProposalId = null;
+        executeConfirmedDraft(event, draft.getActionType(), payload, confirmation);
+    }
+
+    /**
+     * One-tap confirm for an engine draft: the read-back was already shown.
+     * Builds {@link ConfirmedProposal} then runs the existing local/Core path
+     * that feeds {@code CommandPolicy}.
+     */
+    private void executeConfirmedDraft(
+            StoredNotificationEvent event,
+            ActionType type,
+            Map<String, Object> payload,
+            ConfirmedProposal confirmation) {
+        ChatListController.LegacyControls legacy = surface.chats.legacy();
+        ConnectionConfig config;
+        try {
+            config = ConnectionConfigStore.load(
+                    surface.activity, surface.runtime().getDeviceId());
+        } catch (RuntimeException missing) {
+            TextureFlowConnectionController.useLocalStub(surface.activity);
+            config = ConnectionConfigStore.load(
+                    surface.activity, surface.runtime().getDeviceId());
+        }
+        phoneActionBusy = true;
+        setResponseActionsEnabled(false);
+        legacy.confirmButton.setEnabled(false);
+        legacy.cancelButton.setEnabled(false);
+        renderExecution(confirmation.getProposalId(), "Executing confirmed suggestion");
+        ConnectionConfig finalConfig = config;
+        surface.actionExecutor.execute(() -> {
+            try {
+                CoreActionClient.Proposal proposal;
+                if (finalConfig.isStub()) {
+                    if (localActionClient == null) {
+                        localActionClient = new LocalCoreActionClient(surface.activity, finalConfig);
+                    }
+                    proposal = localActionClient.create(event, type, payload);
+                    CoreActionClient.Confirmation result = localActionClient.confirm(proposal);
+                    surface.activity.runOnUiThread(() ->
+                            finishPhoneConfirmation(proposal, event, result.receipt()));
+                    return;
+                }
+                String actionToken = ConnectionConfigStore.loadUserActionToken(surface.activity);
+                if (actionToken == null || actionToken.trim().isEmpty()) {
+                    surface.activity.runOnUiThread(() -> {
+                        finishPhoneActionFailure(
+                                "Add the User action token in Settings to use live Core.");
+                        surface.showPage(Page.SETTINGS);
+                    });
+                    return;
+                }
+                CoreActionClient client = new CoreActionClient(finalConfig, actionToken);
+                proposal = client.create(event, type, payload);
+                CoreActionClient.Confirmation result = client.confirm(proposal);
+                CoreActionClient.Receipt receipt = result.receipt() == null
+                        ? client.awaitReceipt(result.commandId(), 65_000L)
+                        : result.receipt();
+                surface.activity.runOnUiThread(() ->
+                        finishPhoneConfirmation(proposal, event, receipt));
+            } catch (Exception failure) {
+                surface.activity.runOnUiThread(() -> finishPhoneActionFailure(
+                        "Action was not confirmed. It remains unsent."));
+            }
+        });
+    }
+
     public void requestCancellation(View source) {
         ChatListController.LegacyControls legacy = surface.chats.legacy();
+        if (proposalFlow.active() != null && activePhoneProposal == null) {
+            ProposalDraft draft = proposalFlow.active();
+            proposalFlow.clearActive();
+            intelligenceProposalId = null;
+            currentProposalId = null;
+            renderCancelled(draft.getProposalId(), "Nothing was executed.");
+            if (currentAttention != null) {
+                renderResponseOptions(currentAttention);
+                legacy.responseOptions.setVisibility(View.VISIBLE);
+            }
+            return;
+        }
         if (activePhoneProposal != null) {
             cancelPhoneProposal();
             return;
