@@ -1,5 +1,8 @@
 # `ui/` — Moth Market screen + voice
 
+Product architecture for the next layer (private moth, memory plane,
+Edit/Send/× proposals) lives in [`MOTH_MARKET_ARCHITECTURE.md`](MOTH_MARKET_ARCHITECTURE.md).
+
 `MainActivity` is the **Host**: lifecycle, permissions, and wiring. Page
 behaviour lives in extracted controllers so Stream I can hang assessments
 on the chat list without editing a 2k-line Activity.

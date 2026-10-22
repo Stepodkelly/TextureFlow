@@ -11,6 +11,7 @@ Longer explanations. If you are new, start with:
 | File | Topic |
 |------|--------|
 | `INTELLIGENCE_PRODUCTION.md` | Production on-device intelligence plan (proposal) |
+| [`../app/src/main/java/com/textureflow/ui/MOTH_MARKET_ARCHITECTURE.md`](../app/src/main/java/com/textureflow/ui/MOTH_MARKET_ARCHITECTURE.md) | Moth Market product architecture (memory plane, private moth, ledgers) |
 | `BUILD_PLAN.md` | Work breakdown for sub-agents building the intelligence engine |
 | `MODEL_BENCHMARK.md` | On-device MediaPipe / Gemma bench (Stream E) |
 | `ANDROID_INTEGRATION.md` | Notification listener on Android |

@@ -9,6 +9,7 @@ Packages are one job each. Prefer the package `README.md` for a file list.
 | I want to… | Look here |
 |------------|-----------|
 | Change the Moth Market chat UI / settings | `ui/MainActivity.java`, `ui/MothMarketTheme.java` |
+| Read the Moth Market product architecture (moth, memory, ledgers) | `ui/MOTH_MARKET_ARCHITECTURE.md` |
 | Change voice listening / speaking | `ui/ConversationalVoiceController.java` |
 | Parse “reply with …” voice phrases | `ui/VoiceCommandParser.java` |
 | Capture notifications from other apps | `notifications/TextureNotificationListenerService.java` |
