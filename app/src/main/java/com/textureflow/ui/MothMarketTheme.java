@@ -15,14 +15,14 @@ public final class MothMarketTheme {
     public static final int SURFACE_RAISED = Color.parseColor("#F7F9FC");
     public static final int LOGO_WELL = Color.parseColor("#D8DEE8");
     public static final int INK = Color.parseColor("#1A1F27");
-    public static final int MUTED = Color.parseColor("#6B7585");
-    public static final int SEARCH = Color.argb(168, 0xD3, 0xDA, 0xE5);
+    public static final int MUTED = Color.parseColor("#5D6878");
+    public static final int SEARCH = Color.argb(150, 0xE4, 0xEA, 0xF1);
     public static final int CHIP = Color.parseColor("#E2E7EF");
-    public static final int NAV = Color.argb(168, 0xD0, 0xD7, 0xE1);
-    public static final int NAV_SELECTED = Color.argb(200, 0xE9, 0xEE, 0xF5);
+    public static final int NAV = Color.argb(180, 0xDE, 0xE5, 0xEE);
+    public static final int NAV_SELECTED = Color.argb(220, 0xF5, 0xF9, 0xFB);
     public static final int PLACEHOLDER = Color.parseColor("#D9E0EA");
     public static final int BUBBLE_IN = Color.parseColor("#FFFFFF");
-    public static final int BUBBLE_OUT = Color.parseColor("#DCF8C6");
+    public static final int BUBBLE_OUT = Color.parseColor("#DCEEE7");
 
     private MothMarketTheme() {}
 
@@ -56,6 +56,14 @@ public final class MothMarketTheme {
         return drawable;
     }
 
+    public static GradientDrawable glassSurface(Context context, int fill, float radiusDp) {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{withAlpha(Color.WHITE, Math.min(235, Color.alpha(fill) + 28)), fill});
+        drawable.setCornerRadius(dp(context, radiusDp));
+        drawable.setStroke(dp(context, 1), withAlpha(Color.WHITE, 190));
+        return drawable;
+    }
+
     /** Soft card with a faint app-colored outer glow. */
     public static LayerDrawable glowingCard(Context context, int glowColor) {
         return glowingCard(context, glowColor, 100);
@@ -63,7 +71,7 @@ public final class MothMarketTheme {
 
     public static LayerDrawable glowingCard(Context context, int glowColor, int glowAlpha) {
         GradientDrawable glow = roundRect(withAlpha(glowColor, glowAlpha), 30f, context);
-        GradientDrawable face = roundRect(SURFACE_RAISED, 28f, context);
+        GradientDrawable face = glassSurface(context, SURFACE_RAISED, 28f);
         LayerDrawable layers = new LayerDrawable(new android.graphics.drawable.Drawable[]{glow, face});
         // Keep the face nearly flush with the view edge so overlap math matches what you see.
         int inset = dp(context, 2);
@@ -72,17 +80,21 @@ public final class MothMarketTheme {
     }
 
     public static GradientDrawable quietCard(Context context) {
-        return roundRect(SURFACE, 28f, context);
+        return glassSurface(context, SURFACE, 28f);
     }
 
     public static GradientDrawable placeholderSlot(Context context) {
-        return roundRect(PLACEHOLDER, 28f, context);
+        return glassSurface(context, withAlpha(PLACEHOLDER, 105), 28f);
     }
 
     public static StateListDrawable navPill(Context context, boolean selected) {
         StateListDrawable states = new StateListDrawable();
-        GradientDrawable on = roundRect(NAV_SELECTED, 18f, context);
-        GradientDrawable off = roundRect(Color.TRANSPARENT, 18f, context);
+        GradientDrawable on = glassSurface(context, NAV_SELECTED, 24f);
+        GradientDrawable off = roundRect(Color.TRANSPARENT, 24f, context);
+        states.addState(new int[]{android.R.attr.state_pressed},
+                glassSurface(context, CHIP, 24f));
+        states.addState(new int[]{android.R.attr.state_focused},
+                glassSurface(context, CHIP, 24f));
         if (selected) {
             states.addState(new int[]{}, on);
         } else {

@@ -87,7 +87,7 @@ public final class ConversationController {
     public FrameLayout buildPage() {
         UiKit kit = surface.kit;
         LinearLayout content = kit.pageColumn();
-        content.setPadding(kit.dp(14), kit.dp(14), kit.dp(14), kit.dp(12));
+        content.setPadding(kit.dp(20), kit.dp(22), kit.dp(20), kit.dp(12));
 
         LinearLayout header = new LinearLayout(surface.activity);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -104,7 +104,7 @@ public final class ConversationController {
 
         conversationMessages = new LinearLayout(surface.activity);
         conversationMessages.setOrientation(LinearLayout.VERTICAL);
-        conversationMessages.setPadding(0, kit.dp(12), 0, kit.dp(12));
+        conversationMessages.setPadding(0, kit.dp(24), 0, kit.dp(12));
         content.addView(conversationMessages, kit.matchWrap());
         chatThreadPage = kit.scrollPage(content);
         return chatThreadPage;
@@ -166,16 +166,16 @@ public final class ConversationController {
 
         LinearLayout bubble = new LinearLayout(surface.activity);
         bubble.setOrientation(LinearLayout.VERTICAL);
-        bubble.setPadding(kit.dp(12), kit.dp(10), kit.dp(12), kit.dp(8));
-        bubble.setBackground(MothMarketTheme.roundRect(
-                outbound ? MothMarketTheme.BUBBLE_OUT : MothMarketTheme.BUBBLE_IN, 18f, surface.activity));
+        bubble.setPadding(kit.dp(16), kit.dp(12), kit.dp(16), kit.dp(10));
+        bubble.setBackground(MothMarketTheme.glassSurface(surface.activity,
+                outbound ? MothMarketTheme.BUBBLE_OUT : MothMarketTheme.BUBBLE_IN, 22f));
         bubble.setElevation(kit.dp(1));
         TextView bodyView = kit.text(body, 16, UiKit.INK, false);
         bodyView.setLineSpacing(kit.dp(2), 1f);
         bubble.addView(bodyView);
         TextView meta = kit.text(ChatListPresenter.clockTime(at), 11, UiKit.MUTED, false);
         meta.setGravity(outbound ? Gravity.END : Gravity.START);
-        bubble.addView(meta, kit.topMargin(kit.dp(4)));
+        bubble.addView(meta, kit.topMargin(kit.dp(6)));
 
         LinearLayout.LayoutParams bubbleParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,

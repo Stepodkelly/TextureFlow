@@ -1,8 +1,10 @@
 package com.textureflow.ui.kit;
 
 import android.app.Activity;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.RippleDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -103,7 +105,8 @@ public final class UiKit {
         button.setText(label);
         button.setTextSize(14);
         button.setTextColor(INK);
-        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        button.setLetterSpacing(0f);
         button.setAllCaps(false);
         button.setGravity(Gravity.CENTER);
         button.setMinHeight(dp(48));
@@ -117,9 +120,13 @@ public final class UiKit {
     public ImageButton circleIconButton(int iconRes) {
         ImageButton button = new ImageButton(activity);
         button.setImageResource(iconRes);
-        button.setBackground(MothMarketTheme.circle(MothMarketTheme.CHIP));
+        button.setBackground(new RippleDrawable(
+                ColorStateList.valueOf(Color.argb(35, 38, 118, 110)),
+                MothMarketTheme.glassSurface(activity, MothMarketTheme.SEARCH, 24f),
+                MothMarketTheme.circle(Color.WHITE)));
+        button.setElevation(dp(1));
         button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        button.setPadding(dp(10), dp(10), dp(10), dp(10));
+        button.setPadding(dp(13), dp(13), dp(13), dp(13));
         textureEngine.attachGlassControl(button);
         return button;
     }
@@ -167,7 +174,8 @@ public final class UiKit {
         view.setText(value);
         view.setTextSize(size);
         view.setTextColor(color);
-        view.setTypeface(Typeface.DEFAULT, bold ? Typeface.BOLD : Typeface.NORMAL);
+        view.setTypeface(Typeface.create(bold ? "sans-serif-medium" : "sans-serif", Typeface.NORMAL));
+        view.setLetterSpacing(0f);
         view.setIncludeFontPadding(true);
         return view;
     }
@@ -205,7 +213,7 @@ public final class UiKit {
     public FrameLayout.LayoutParams navigationParams() {
         // WRAP_CONTENT so icon + "chat"/"flow" captions are not clipped.
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        params.setMargins(dp(18), 0, dp(18), dp(18));
+        params.setMargins(dp(24), 0, dp(24), dp(18));
         return params;
     }
 

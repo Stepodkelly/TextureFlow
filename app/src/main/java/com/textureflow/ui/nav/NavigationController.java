@@ -54,14 +54,14 @@ public final class NavigationController {
         LinearLayout shell = new LinearLayout(surface.activity);
         shell.setOrientation(LinearLayout.HORIZONTAL);
         shell.setGravity(Gravity.CENTER);
-        shell.setPadding(kit.dp(10), kit.dp(6), kit.dp(10), kit.dp(6));
-        shell.setBackground(MothMarketTheme.roundRect(MothMarketTheme.NAV, 30f, surface.activity));
-        shell.setElevation(kit.dp(8));
+        shell.setPadding(kit.dp(6), kit.dp(6), kit.dp(6), kit.dp(6));
+        shell.setBackground(MothMarketTheme.glassSurface(surface.activity, MothMarketTheme.NAV, 32f));
+        shell.setElevation(kit.dp(6));
         shell.setClipChildren(false);
         shell.setClipToPadding(false);
 
-        chatsTab = navTab("chat", com.textureflow.R.drawable.ic_chats, Page.CHATS, true);
-        flowsTab = navTab("flow", com.textureflow.R.drawable.moth_logo, Page.FLOWS, false);
+        chatsTab = navTab("Chat", com.textureflow.R.drawable.ic_chats, Page.CHATS, true);
+        flowsTab = navTab("Flow", com.textureflow.R.drawable.moth_logo, Page.FLOWS, false);
         shell.addView(chatsTab, kit.navItemParams());
         shell.addView(flowsTab, kit.navItemParams());
         return shell;
@@ -73,6 +73,9 @@ public final class NavigationController {
         tab.setOrientation(LinearLayout.VERTICAL);
         tab.setGravity(Gravity.CENTER_HORIZONTAL);
         tab.setPadding(kit.dp(18), kit.dp(8), kit.dp(18), kit.dp(8));
+        tab.setMinimumHeight(kit.dp(62));
+        tab.setContentDescription(label);
+        tab.setTooltipText(label);
         tab.setBackground(MothMarketTheme.navPill(surface.activity, selected));
         tab.setClickable(true);
         tab.setFocusable(true);
@@ -84,10 +87,12 @@ public final class NavigationController {
         ImageView iconView = new ImageView(surface.activity);
         iconView.setImageResource(icon);
         iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        iconView.setContentDescription(label);
+        iconView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        iconView.setAlpha(selected ? 1f : 0.65f);
         tab.addView(iconView, new LinearLayout.LayoutParams(kit.dp(26), kit.dp(26)));
 
-        TextView caption = kit.text(label, 11, selected ? UiKit.INK : UiKit.MUTED, selected);
+        TextView caption = kit.text(label, 12, selected ? UiKit.TEAL : UiKit.MUTED, selected);
+        caption.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         caption.setGravity(Gravity.CENTER);
         caption.setIncludeFontPadding(false);
         LinearLayout.LayoutParams captionParams = new LinearLayout.LayoutParams(-2, -2);
@@ -114,9 +119,12 @@ public final class NavigationController {
     public void selectNavTab(LinearLayout tab, boolean selected) {
         tab.setSelected(selected);
         tab.setBackground(MothMarketTheme.navPill(surface.activity, selected));
+        if (tab.getChildAt(0) instanceof ImageView icon) {
+            icon.setAlpha(selected ? 1f : 0.65f);
+        }
         if (tab.getChildCount() > 1 && tab.getChildAt(1) instanceof TextView caption) {
-            caption.setTypeface(Typeface.DEFAULT, selected ? Typeface.BOLD : Typeface.NORMAL);
-            caption.setTextColor(selected ? UiKit.INK : UiKit.MUTED);
+            caption.setTypeface(Typeface.create(selected ? "sans-serif-medium" : "sans-serif", Typeface.NORMAL));
+            caption.setTextColor(selected ? UiKit.TEAL : UiKit.MUTED);
         }
     }
 }

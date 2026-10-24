@@ -67,7 +67,7 @@ public final class TextureDrawableFactory {
                 new int[]{
                         brighten(bodyColor, 24),
                         bodyColor,
-                        Color.argb(Math.max(42, Color.alpha(bodyColor) - 46), 92, 108, 99)
+                        Color.argb(Math.max(42, Color.alpha(bodyColor) - 26), 198, 212, 215)
                 });
         body.setCornerRadius(radius);
         body.setStroke(strokeWidth, strokeColor);

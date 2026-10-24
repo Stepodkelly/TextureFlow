@@ -82,12 +82,13 @@ public final class SettingsPage {
     public FrameLayout build() {
         UiKit kit = surface.kit;
         LinearLayout content = kit.pageColumn();
+        content.setPadding(kit.dp(20), kit.dp(22), kit.dp(20), kit.dp(12));
         Button back = kit.compactButton("Back to chats", UiKit.TEAL);
         back.setOnClickListener(view -> surface.showPage(Page.CHATS));
         content.addView(back, kit.narrowStart());
-        TextView title = kit.text("Settings", 28, UiKit.INK, true);
+        TextView title = kit.text("Settings", 24, UiKit.INK, true);
         title.setAccessibilityHeading(true);
-        content.addView(title, kit.topMargin(kit.dp(8)));
+        content.addView(title, kit.topMargin(kit.dp(20)));
 
         LinearLayout connectionPanel = kit.surface(kit.dp(28));
         connectionPanel.addView(kit.sectionHeading("Connection"));

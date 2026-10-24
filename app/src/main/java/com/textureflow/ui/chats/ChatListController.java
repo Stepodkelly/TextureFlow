@@ -1,10 +1,13 @@
 package com.textureflow.ui.chats;
 
 import android.app.AlertDialog;
+import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -96,7 +99,7 @@ public final class ChatListController {
     public FrameLayout buildPage() {
         UiKit kit = surface.kit;
         LinearLayout content = kit.pageColumn();
-        content.setPadding(kit.dp(20), kit.dp(28), kit.dp(20), kit.dp(12));
+        content.setPadding(kit.dp(20), kit.dp(22), kit.dp(20), kit.dp(12));
         content.setClipChildren(false);
         content.setClipToPadding(false);
 
@@ -108,20 +111,28 @@ public final class ChatListController {
         logo.setImageResource(R.drawable.moth_logo);
         logo.setContentDescription("Moth Market");
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        topBar.addView(logo, new LinearLayout.LayoutParams(kit.dp(52), kit.dp(52)));
+        topBar.addView(logo, new LinearLayout.LayoutParams(kit.dp(44), kit.dp(44)));
 
-        View spacer = new View(surface.activity);
-        topBar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+        TextView brand = kit.text("TextureFlow", 20, UiKit.INK, true);
+        brand.setMaxLines(1);
+        brand.setAutoSizeTextTypeUniformWithConfiguration(14, 20, 1, TypedValue.COMPLEX_UNIT_SP);
+        brand.setAccessibilityHeading(true);
+        LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(0, kit.dp(48), 1f);
+        brandParams.setMargins(kit.dp(10), 0, kit.dp(10), 0);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.addView(brand, brandParams);
 
         ImageButton more = kit.circleIconButton(R.drawable.ic_more_vert);
         more.setContentDescription("Settings");
+        more.setTooltipText("Settings");
         more.setOnClickListener(view -> surface.showPage(Page.SETTINGS));
-        topBar.addView(more, new LinearLayout.LayoutParams(kit.dp(42), kit.dp(42)));
+        topBar.addView(more, new LinearLayout.LayoutParams(kit.dp(48), kit.dp(48)));
 
         ImageButton add = kit.circleIconButton(R.drawable.ic_plus);
         add.setContentDescription("New chat");
-        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(kit.dp(42), kit.dp(42));
-        addParams.setMargins(kit.dp(10), 0, 0, 0);
+        add.setTooltipText("New chat");
+        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(kit.dp(48), kit.dp(48));
+        addParams.setMargins(kit.dp(8), 0, 0, 0);
         add.setOnClickListener(view -> new AlertDialog.Builder(surface.activity)
                 .setTitle("New chat")
                 .setMessage("Starting a new chat from Moth Market is coming next. For now, open a person from the list.")
@@ -133,20 +144,29 @@ public final class ChatListController {
         LinearLayout searchRow = new LinearLayout(surface.activity);
         searchRow.setOrientation(LinearLayout.HORIZONTAL);
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
-        searchRow.setPadding(kit.dp(18), kit.dp(12), kit.dp(18), kit.dp(12));
-        searchRow.setBackground(MothMarketTheme.roundRect(MothMarketTheme.SEARCH, 26f, surface.activity));
+        searchRow.setPadding(kit.dp(18), kit.dp(2), kit.dp(18), kit.dp(2));
+        searchRow.setMinimumHeight(kit.dp(54));
+        searchRow.setBackground(MothMarketTheme.glassSurface(surface.activity, MothMarketTheme.SEARCH, 27f));
         ImageView searchIcon = new ImageView(surface.activity);
         searchIcon.setImageResource(R.drawable.ic_search);
-        searchIcon.setContentDescription("Search");
+        searchIcon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         searchRow.addView(searchIcon, new LinearLayout.LayoutParams(kit.dp(18), kit.dp(18)));
         searchField = new EditText(surface.activity);
-        searchField.setHint("Search");
+        searchField.setHint("Search conversations");
         searchField.setHintTextColor(UiKit.MUTED);
         searchField.setTextColor(UiKit.INK);
         searchField.setBackground(new ColorDrawable(UiKit.TRANSPARENT));
         searchField.setSingleLine(true);
         searchField.setTextSize(16);
+        searchField.setLetterSpacing(0f);
+        searchField.setMinHeight(kit.dp(48));
         searchField.setPadding(kit.dp(10), kit.dp(2), kit.dp(4), kit.dp(2));
+        searchField.setOnFocusChangeListener((view, focused) -> {
+            GradientDrawable background = MothMarketTheme.glassSurface(
+                    surface.activity, MothMarketTheme.SEARCH, 27f);
+            if (focused) background.setStroke(kit.dp(1), UiKit.TEAL);
+            searchRow.setBackground(background);
+        });
         searchField.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
@@ -156,7 +176,7 @@ public final class ChatListController {
         });
         searchRow.addView(searchField, new LinearLayout.LayoutParams(0, -2, 1f));
         LinearLayout.LayoutParams searchParams = kit.matchWrap();
-        searchParams.setMargins(0, kit.dp(22), 0, kit.dp(22));
+        searchParams.setMargins(0, kit.dp(24), 0, kit.dp(24));
         content.addView(searchRow, searchParams);
 
         chatListContainer = new LinearLayout(surface.activity);
@@ -279,7 +299,8 @@ public final class ChatListController {
         for (int i = 0; i < placeholders; i++) {
             View slot = new View(surface.activity);
             slot.setBackground(MothMarketTheme.placeholderSlot(surface.activity));
-            slot.setAlpha(0.72f);
+            slot.setAlpha(0.64f);
+            slot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, kit.dp(76));
             params.setMargins(avatarOverhang, 0, 0, kit.dp(14));
             chatListContainer.addView(slot, params);
@@ -302,7 +323,8 @@ public final class ChatListController {
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
         // Space inside the card for the avatar overlap + gap before the name.
-        card.setPadding(avatarSize - overhang + kit.dp(10), kit.dp(14), kit.dp(14), kit.dp(14));
+        card.setPadding(avatarSize - overhang + kit.dp(12), kit.dp(16), kit.dp(18), kit.dp(16));
+        card.setMinimumHeight(kit.dp(88));
         card.setClickable(true);
         card.setFocusable(true);
         card.setContentDescription(personDescription(person));
@@ -336,6 +358,8 @@ public final class ChatListController {
         nameRow.setOrientation(LinearLayout.HORIZONTAL);
         nameRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView name = kit.text(person.name, 18, UiKit.INK, true);
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.END);
         nameRow.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
         if (ChatListPresenter.isOnDeviceModel(person.assessment)) {
             View sourceDot = new View(surface.activity);
@@ -347,7 +371,7 @@ public final class ChatListController {
             nameRow.addView(sourceDot, dotParams);
         }
         labels.addView(nameRow);
-        TextView snippet = kit.text(person.latestBody, 14, UiKit.INK, false);
+        TextView snippet = kit.text(person.latestBody, 14, UiKit.MUTED, false);
         snippet.setSingleLine(true);
         snippet.setEllipsize(TextUtils.TruncateAt.END);
         labels.addView(snippet, kit.topMargin(kit.dp(4)));
@@ -365,17 +389,19 @@ public final class ChatListController {
         LinearLayout trailing = new LinearLayout(surface.activity);
         trailing.setOrientation(LinearLayout.VERTICAL);
         trailing.setGravity(Gravity.END);
-        TextView time = kit.text(ChatListPresenter.clockTime(person.latestAt), 12, UiKit.INK, false);
+        TextView time = kit.text(ChatListPresenter.clockTime(person.latestAt), 12, UiKit.MUTED, false);
         time.setSingleLine(true);
         time.setGravity(Gravity.CENTER);
-        time.setPadding(kit.dp(10), kit.dp(5), kit.dp(10), kit.dp(5));
-        time.setBackground(MothMarketTheme.roundRect(MothMarketTheme.CHIP, 14f, surface.activity));
         trailing.addView(time, new LinearLayout.LayoutParams(-2, -2));
         if (person.unreadCount > 0) {
-            TextView badge = kit.text(String.valueOf(Math.min(person.unreadCount, 99)), 12, UiKit.INK, true);
+            TextView badge = kit.text(String.valueOf(Math.min(person.unreadCount, 99)), 12, Color.WHITE, true);
             badge.setGravity(Gravity.CENTER);
-            badge.setBackground(MothMarketTheme.circle(MothMarketTheme.CHIP));
-            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(kit.dp(22), kit.dp(22));
+            badge.setIncludeFontPadding(false);
+            badge.setMinWidth(kit.dp(24));
+            badge.setMinHeight(kit.dp(24));
+            badge.setPadding(kit.dp(6), kit.dp(3), kit.dp(6), kit.dp(3));
+            badge.setBackground(MothMarketTheme.roundRect(UiKit.TEAL, 16f, surface.activity));
+            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(-2, -2);
             badgeParams.setMargins(0, kit.dp(8), 0, 0);
             badgeParams.gravity = Gravity.END;
             trailing.addView(badge, badgeParams);
@@ -389,6 +415,8 @@ public final class ChatListController {
 
         ImageView avatar = new ImageView(surface.activity);
         avatar.setImageResource(R.drawable.ic_person_avatar);
+        avatar.setBackground(MothMarketTheme.circle(Color.WHITE));
+        avatar.setPadding(kit.dp(2), kit.dp(2), kit.dp(2), kit.dp(2));
         avatar.setContentDescription(person.name + " photo");
         avatar.setElevation(kit.dp(6));
         FrameLayout.LayoutParams avatarParams = new FrameLayout.LayoutParams(avatarSize, avatarSize);
