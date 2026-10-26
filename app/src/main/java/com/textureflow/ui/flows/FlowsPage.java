@@ -1,6 +1,9 @@
 package com.textureflow.ui.flows;
 
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
@@ -44,6 +47,7 @@ public final class FlowsPage {
                     "From Alex | Chat", StepState.UPCOMING)
     };
     private LinearLayout content;
+    private int selectedIndex = 1;
 
     public FlowsPage(MainSurface surface) {
         this.surface = surface;
@@ -61,45 +65,111 @@ public final class FlowsPage {
         UiKit kit = surface.kit;
         content.removeAllViews();
 
+        LinearLayout header = new LinearLayout(surface.activity);
+        header.setGravity(Gravity.CENTER_VERTICAL);
         TextView eyebrow = kit.text("TODAY", 13, UiKit.TEAL, true);
-        content.addView(eyebrow);
+        header.addView(eyebrow, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView progress = kit.text(progressLabel(), 12, UiKit.MUTED, true);
+        progress.setPadding(kit.dp(12), kit.dp(6), kit.dp(12), kit.dp(6));
+        progress.setBackground(MothMarketTheme.glassSurface(
+                surface.activity, MothMarketTheme.NAV_SELECTED, 16f));
+        header.addView(progress, new LinearLayout.LayoutParams(-2, -2));
+        content.addView(header, kit.matchWrap());
+
         TextView title = kit.text("Your path", 30, UiKit.INK, true);
         title.setAccessibilityHeading(true);
         content.addView(title, kit.topMargin(kit.dp(4)));
-        TextView progress = kit.text(progressLabel(), 15, UiKit.MUTED, false);
-        content.addView(progress, kit.topMargin(kit.dp(6)));
 
-        int current = currentIndex();
-        if (current >= 0) {
-            content.addView(currentCommitment(commitments[current]), kit.wideWithTop(kit.dp(22)));
-        } else {
-            content.addView(finishedState(), kit.wideWithTop(kit.dp(22)));
-        }
+        TextView subtitle = kit.text("A small route through what matters today.", 15, UiKit.MUTED, false);
+        content.addView(subtitle, kit.topMargin(kit.dp(6)));
 
-        TextView pathHeading = kit.sectionHeading("Commitments");
-        content.addView(pathHeading, kit.topMargin(kit.dp(26)));
-        for (int i = 0; i < commitments.length; i++) {
-            content.addView(pathNode(commitments[i], i + 1), kit.wideWithTop(kit.dp(i == 0 ? 0 : 4)));
-            if (i < commitments.length - 1) {
-                content.addView(pathConnector(commitments[i]), connectorParams());
-            }
-        }
+        LinearLayout.LayoutParams trailParams = new LinearLayout.LayoutParams(-1, kit.dp(442));
+        trailParams.setMargins(0, kit.dp(12), 0, 0);
+        content.addView(commitmentTrail(), trailParams);
+        content.addView(selectedCommitment(), kit.wideWithTop(kit.dp(8)));
 
         TextView footnote = kit.text("Only commitments you choose belong here.", 13, UiKit.MUTED, false);
         footnote.setGravity(Gravity.CENTER_HORIZONTAL);
-        content.addView(footnote, kit.wideWithTop(kit.dp(20)));
+        content.addView(footnote, kit.wideWithTop(kit.dp(18)));
     }
 
-    private LinearLayout currentCommitment(Commitment commitment) {
+    private FrameLayout commitmentTrail() {
         UiKit kit = surface.kit;
+        FrameLayout trail = new FrameLayout(surface.activity);
+        trail.setClipChildren(false);
+        trail.setClipToPadding(false);
+        trail.setMinimumHeight(kit.dp(442));
+        trail.addView(new TrailBackdropView(surface.activity),
+                new FrameLayout.LayoutParams(-1, kit.dp(442)));
+
+        // The route deliberately descends in a staggered, map-like rhythm.
+        addTrailNode(trail, 2, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, kit.dp(18));
+        addTrailLabel(trail, 2, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, kit.dp(104));
+        addTrailNode(trail, 1, Gravity.TOP | Gravity.END, kit.dp(18), kit.dp(142));
+        addTrailLabel(trail, 1, Gravity.TOP | Gravity.END, kit.dp(6), kit.dp(244));
+        addTrailNode(trail, 0, Gravity.TOP | Gravity.START, kit.dp(12), kit.dp(286));
+        addTrailLabel(trail, 0, Gravity.TOP | Gravity.START, kit.dp(0), kit.dp(374));
+        return trail;
+    }
+
+    private void addTrailNode(FrameLayout trail, int index, int gravity, int horizontalMargin, int topMargin) {
+        UiKit kit = surface.kit;
+        Commitment commitment = commitments[index];
+        int size = commitment.state == StepState.CURRENT ? kit.dp(86) : kit.dp(72);
+        TextView node = kit.text(nodeLabel(commitment.state, index),
+                commitment.state == StepState.COMPLETE ? 11 : 17,
+                commitment.state == StepState.COMPLETE ? Color.WHITE : UiKit.INK, true);
+        node.setGravity(Gravity.CENTER);
+        node.setClickable(true);
+        node.setFocusable(true);
+        node.setContentDescription(commitment.title + ", " + stateLabel(commitment.state));
+        node.setBackground(nodeBackground(commitment.state, index == selectedIndex));
+        node.setElevation(commitment.state == StepState.CURRENT ? kit.dp(8) : kit.dp(4));
+        surface.textureEngine.attachGlassControl(node);
+        node.setOnClickListener(view -> {
+            selectedIndex = index;
+            render();
+        });
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size, gravity);
+        if ((gravity & Gravity.END) == Gravity.END) params.rightMargin = horizontalMargin;
+        if ((gravity & Gravity.START) == Gravity.START) params.leftMargin = horizontalMargin;
+        params.topMargin = topMargin;
+        trail.addView(node, params);
+    }
+
+    private void addTrailLabel(
+            FrameLayout trail, int index, int gravity, int horizontalMargin, int topMargin) {
+        UiKit kit = surface.kit;
+        Commitment commitment = commitments[index];
+        TextView label = kit.text(commitment.title, 14, UiKit.INK,
+                commitment.state == StepState.CURRENT);
+        label.setSingleLine(true);
+        label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        label.setGravity(Gravity.CENTER);
+        label.setPadding(kit.dp(10), kit.dp(5), kit.dp(10), kit.dp(5));
+        label.setBackground(MothMarketTheme.glassSurface(
+                surface.activity, Color.argb(168, 247, 249, 252), 15f));
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-2, -2, gravity);
+        if ((gravity & Gravity.END) == Gravity.END) params.rightMargin = horizontalMargin;
+        if ((gravity & Gravity.START) == Gravity.START) params.leftMargin = horizontalMargin;
+        params.topMargin = topMargin;
+        trail.addView(label, params);
+    }
+
+    private LinearLayout selectedCommitment() {
+        UiKit kit = surface.kit;
+        if (selectedIndex < 0 || selectedIndex >= commitments.length) selectedIndex = currentIndex();
+        Commitment commitment = selectedIndex >= 0 ? commitments[selectedIndex] : null;
+        if (commitment == null) return finishedState();
+
         LinearLayout card = new LinearLayout(surface.activity);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(kit.dp(20), kit.dp(18), kit.dp(20), kit.dp(18));
         card.setBackground(TextureDrawableFactory.emphasizedPanel(
-                surface.activity, kit.dp(28), UiKit.TEAL));
-        card.setElevation(kit.dp(3));
-
-        TextView label = kit.text("NEXT UP", 12, UiKit.TEAL, true);
+                surface.activity, kit.dp(28), stateAccent(commitment.state)));
+        TextView label = kit.text(stateLabel(commitment.state).toUpperCase(), 12,
+                stateAccent(commitment.state), true);
         card.addView(label);
         TextView title = kit.text(commitment.title, 22, UiKit.INK, true);
         card.addView(title, kit.topMargin(kit.dp(6)));
@@ -109,18 +179,20 @@ public final class FlowsPage {
         TextView source = kit.text(commitment.source, 13, UiKit.MUTED, true);
         card.addView(source, kit.topMargin(kit.dp(12)));
 
-        LinearLayout actions = new LinearLayout(surface.activity);
-        actions.setGravity(Gravity.CENTER_VERTICAL);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        Button later = kit.compactButton("Move to tomorrow", UiKit.AMBER);
-        later.setOnClickListener(this::moveCurrentToLater);
-        LinearLayout.LayoutParams laterParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        laterParams.setMargins(0, 0, kit.dp(8), 0);
-        actions.addView(later, laterParams);
-        Button complete = kit.compactButton("Mark complete", UiKit.TEAL);
-        complete.setOnClickListener(this::completeCurrent);
-        actions.addView(complete, new LinearLayout.LayoutParams(0, -2, 1f));
-        card.addView(actions, kit.wideWithTop(kit.dp(16)));
+        if (commitment.state == StepState.CURRENT) {
+            LinearLayout actions = new LinearLayout(surface.activity);
+            actions.setGravity(Gravity.CENTER_VERTICAL);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            Button later = kit.compactButton("Move to tomorrow", UiKit.AMBER);
+            later.setOnClickListener(this::moveCurrentToLater);
+            LinearLayout.LayoutParams laterParams = new LinearLayout.LayoutParams(0, -2, 1f);
+            laterParams.setMargins(0, 0, kit.dp(8), 0);
+            actions.addView(later, laterParams);
+            Button complete = kit.compactButton("Mark complete", UiKit.TEAL);
+            complete.setOnClickListener(this::completeCurrent);
+            actions.addView(complete, new LinearLayout.LayoutParams(0, -2, 1f));
+            card.addView(actions, kit.wideWithTop(kit.dp(16)));
+        }
         return card;
     }
 
@@ -141,75 +213,19 @@ public final class FlowsPage {
         return card;
     }
 
-    private LinearLayout pathNode(Commitment commitment, int position) {
+    private GradientDrawable nodeBackground(StepState state, boolean selected) {
         UiKit kit = surface.kit;
-        LinearLayout row = new LinearLayout(surface.activity);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(kit.dp(72));
-
-        TextView marker = markerFor(commitment.state, position);
-        row.addView(marker, new LinearLayout.LayoutParams(kit.dp(40), kit.dp(40)));
-
-        LinearLayout details = new LinearLayout(surface.activity);
-        details.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        detailParams.setMargins(kit.dp(14), 0, 0, 0);
-        TextView title = kit.text(commitment.title, 17, UiKit.INK,
-                commitment.state == StepState.CURRENT);
-        title.setSingleLine(true);
-        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        details.addView(title);
-        TextView source = kit.text(commitment.source, 13, UiKit.MUTED, false);
-        source.setSingleLine(true);
-        source.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        details.addView(source, kit.topMargin(kit.dp(2)));
-        row.addView(details, detailParams);
-
-        if (commitment.state == StepState.CURRENT) {
-            TextView next = kit.text("Next", 13, UiKit.TEAL, true);
-            row.addView(next, new LinearLayout.LayoutParams(-2, -2));
-        } else if (commitment.state == StepState.LATER) {
-            TextView later = kit.text("Tomorrow", 13, UiKit.AMBER, true);
-            row.addView(later, new LinearLayout.LayoutParams(-2, -2));
-        }
-        return row;
-    }
-
-    private TextView markerFor(StepState state, int position) {
-        UiKit kit = surface.kit;
-        TextView marker = kit.text(state == StepState.COMPLETE ? "Done" : String.valueOf(position),
-                state == StepState.COMPLETE ? 10 : 16,
-                state == StepState.COMPLETE ? Color.WHITE : UiKit.INK, true);
-        marker.setGravity(Gravity.CENTER);
-        GradientDrawable background;
-        if (state == StepState.COMPLETE) {
-            background = MothMarketTheme.circle(UiKit.TEAL);
-        } else if (state == StepState.CURRENT) {
-            background = MothMarketTheme.circle(MothMarketTheme.NAV_SELECTED);
-            background.setStroke(kit.dp(2), UiKit.TEAL);
-        } else if (state == StepState.LATER) {
-            background = MothMarketTheme.circle(MothMarketTheme.CHIP);
-            background.setStroke(kit.dp(1), UiKit.AMBER);
-        } else {
-            background = MothMarketTheme.circle(MothMarketTheme.CHIP);
-        }
-        marker.setBackground(background);
-        return marker;
-    }
-
-    private View pathConnector(Commitment commitment) {
-        View line = new View(surface.activity);
-        line.setBackgroundColor(commitment.state == StepState.COMPLETE
-                ? UiKit.TEAL : Color.argb(90, 107, 117, 133));
-        return line;
-    }
-
-    private LinearLayout.LayoutParams connectorParams() {
-        UiKit kit = surface.kit;
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(kit.dp(2), kit.dp(18));
-        params.setMargins(kit.dp(19), 0, 0, 0);
-        return params;
+        int fill = switch (state) {
+            case COMPLETE -> UiKit.TEAL;
+            case CURRENT -> MothMarketTheme.NAV_SELECTED;
+            case LATER -> MothMarketTheme.CHIP;
+            case UPCOMING -> MothMarketTheme.SURFACE_RAISED;
+        };
+        GradientDrawable drawable = MothMarketTheme.circle(fill);
+        int stroke = state == StepState.CURRENT ? kit.dp(3) : kit.dp(1);
+        int color = selected ? stateAccent(state) : Color.argb(150, 255, 255, 255);
+        drawable.setStroke(stroke, color);
+        return drawable;
     }
 
     private void completeCurrent(View source) {
@@ -218,6 +234,7 @@ public final class FlowsPage {
         commitments[current].state = StepState.COMPLETE;
         if (current + 1 < commitments.length && commitments[current + 1].state == StepState.UPCOMING) {
             commitments[current + 1].state = StepState.CURRENT;
+            selectedIndex = current + 1;
         }
         surface.textureEngine.playBoundaryBump(source);
         render();
@@ -230,6 +247,7 @@ public final class FlowsPage {
         for (int i = current + 1; i < commitments.length; i++) {
             if (commitments[i].state == StepState.UPCOMING) {
                 commitments[i].state = StepState.CURRENT;
+                selectedIndex = i;
                 break;
             }
         }
@@ -258,5 +276,59 @@ public final class FlowsPage {
             if (commitment.state == StepState.LATER) later++;
         }
         return later;
+    }
+
+    private static String nodeLabel(StepState state, int index) {
+        return switch (state) {
+            case COMPLETE -> "Done";
+            case CURRENT -> "Now";
+            case LATER -> "Later";
+            case UPCOMING -> String.valueOf(index + 1);
+        };
+    }
+
+    private static String stateLabel(StepState state) {
+        return switch (state) {
+            case COMPLETE -> "Completed";
+            case CURRENT -> "Next up";
+            case LATER -> "Tomorrow";
+            case UPCOMING -> "Later in your path";
+        };
+    }
+
+    private static int stateAccent(StepState state) {
+        return state == StepState.LATER ? UiKit.AMBER : UiKit.TEAL;
+    }
+
+    private final class TrailBackdropView extends View {
+        private final Paint pathPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint haloPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+
+        TrailBackdropView(android.content.Context context) {
+            super(context);
+            pathPaint.setStyle(Paint.Style.STROKE);
+            pathPaint.setStrokeCap(Paint.Cap.ROUND);
+            pathPaint.setStrokeWidth(surface.kit.dp(5));
+            pathPaint.setColor(Color.argb(168, 38, 118, 110));
+            haloPaint.setColor(Color.argb(24, 38, 118, 110));
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float width = getWidth();
+            float height = getHeight();
+            canvas.drawCircle(width * .50f, height * .18f, surface.kit.dp(46), haloPaint);
+            canvas.drawCircle(width * .90f, height * .47f, surface.kit.dp(58), haloPaint);
+            canvas.drawCircle(width * .13f, height * .78f, surface.kit.dp(46), haloPaint);
+            path.reset();
+            path.moveTo(width * .50f, height * .18f);
+            path.cubicTo(width * .62f, height * .25f, width * .82f, height * .34f,
+                    width * .90f, height * .47f);
+            path.cubicTo(width * .84f, height * .61f, width * .35f, height * .69f,
+                    width * .13f, height * .78f);
+            canvas.drawPath(path, pathPaint);
+        }
     }
 }
